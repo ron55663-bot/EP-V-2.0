@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Line 儀器行程產生器</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="workspace">
+      <div class="input-pane">
+        <div class="pane-head">
+          <div>
+            <h1>Line 儀器行程產生器</h1>
+            <p>貼上原始行程，產生北區與中南區 Line 訊息。</p>
+          </div>
+          <button id="loadSampleBtn" type="button" class="ghost-btn">載入範例</button>
+        </div>
+        <textarea id="rawInput" spellcheck="false" placeholder="請貼上 PDF 內同格式的行程資料，例如：&#10;7/1&#10;&quot;北辦至高醫岡山送達0800&#10;聯絡人_業務&#10;儀器_WMC-2&quot;"></textarea>
+        <div class="action-row">
+          <button id="parseBtn" type="button" class="primary-btn">產生訊息</button>
+          <button id="clearBtn" type="button" class="ghost-btn">清空</button>
+        </div>
+      </div>
+
+      <div class="edit-pane">
+        <div class="pane-head tight">
+          <div>
+            <h2>行程編輯</h2>
+            <p id="summaryText">尚未產生行程</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>區域</th>
+                <th>起點</th>
+                <th>終點</th>
+                <th>儀器</th>
+                <th>運送</th>
+                <th>動作</th>
+                <th>時間</th>
+                <th>聯絡人</th>
+                <th>電話</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="scheduleBody">
+              <tr class="empty-row"><td colspan="11">貼上資料後，這裡會顯示可編輯的行程。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="output-grid">
+      <article class="output-pane">
+        <div class="pane-head tight">
+          <div>
+            <h2>北區訊息</h2>
+            <p>可直接複製貼到 Line。</p>
+          </div>
+          <button class="copy-btn" type="button" data-target="northOutput">複製</button>
+        </div>
+        <textarea id="northOutput" readonly></textarea>
+      </article>
+
+      <article class="output-pane">
+        <div class="pane-head tight">
+          <div>
+            <h2>中南區訊息</h2>
+            <p>可直接複製貼到 Line。</p>
+          </div>
+          <button class="copy-btn" type="button" data-target="southOutput">複製</button>
+        </div>
+        <textarea id="southOutput" readonly></textarea>
+      </article>
+    </section>
+  </main>
+
+  <template id="rowTemplate">
+    <tr>
+      <td><input data-field="date"></td>
+      <td>
+        <select data-field="region">
+          <option value="north">北區</option>
+          <option value="south">中南區</option>
+        </select>
+      </td>
+      <td><input data-field="from"></td>
+      <td><input data-field="to"></td>
+      <td><input data-field="instruments"></td>
+      <td>
+        <select data-field="delivery">
+          <option value="cargo">物流貨運</option>
+          <option value="self">同仁自送</option>
+        </select>
+      </td>
+      <td>
+        <select data-field="action">
+          <option value="">空白</option>
+          <option value="送達">送達</option>
+          <option value="取回">取回</option>
+        </select>
+      </td>
+      <td><input data-field="time"></td>
+      <td><input data-field="contact"></td>
+      <td><input data-field="phone"></td>
+      <td><button type="button" class="icon-btn" data-remove title="刪除">×</button></td>
+    </tr>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
