@@ -11,11 +11,12 @@
 
 1. 將本資料夾放入私人 GitHub repository，並把該 repository 連接到 Netlify。
 2. 在 Netlify 開啟 Identity，Registration preferences 設為 Invite only。
-3. 邀請允許使用程式的 Email。
-4. 在 Project configuration > Environment variables 新增：
+3. 在 Identity > Registration > External providers 啟用 Google。
+4. 邀請允許使用程式的 Google 帳號 Email；使用者直接透過 Google 登入，不需建立 Netlify 密碼。
+5. 在 Project configuration > Environment variables 新增：
    - `GOOGLE_CLIENT_EMAIL`：JSON 內的 `client_email`
    - `GOOGLE_PRIVATE_KEY`：JSON 內的完整 `private_key`
-5. 重新部署網站。
+6. 重新部署網站。
 
 ## 月份資料夾
 

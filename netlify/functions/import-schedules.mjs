@@ -43,9 +43,16 @@ export async function handler(event, context) {
       files: resolution.selections.map((item) => item.file.name)
     });
   } catch (error) {
-    console.error("Google Sheets import failed:", error?.message || error);
+    const message = error?.message || String(error);
+    console.error("Google Sheets import failed:", message);
+    let userMessage = "無法讀取 Google Drive，請檢查 API、Netlify 金鑰與資料夾分享權限。";
+    if (message.startsWith("PRIVATE_KEY_FORMAT_INVALID")) {
+      userMessage = "GOOGLE_PRIVATE_KEY 格式不正確，請重新貼上服務帳戶 JSON 中的 private_key。";
+    } else if (message.startsWith("GOOGLE_AUTH_REJECTED")) {
+      userMessage = "Google 拒絕服務帳戶金鑰，請確認 Email 與私密金鑰來自同一份 JSON。";
+    }
     return jsonResponse(500, {
-      error: "無法讀取 Google Drive，請檢查 API、Netlify 金鑰與資料夾分享權限。"
+      error: userMessage
     });
   }
 }
@@ -68,9 +75,15 @@ function parseIsoDate(value) {
 }
 
 async function getGoogleAccessToken() {
-  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  const privateKey = String(process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const clientEmail = String(process.env.GOOGLE_CLIENT_EMAIL || "").trim();
+  const privateKey = normalizePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
   if (!clientEmail || !privateKey) throw new Error("Missing Google service account settings");
+  if (
+    !privateKey.includes("-----BEGIN PRIVATE KEY-----") ||
+    !privateKey.includes("-----END PRIVATE KEY-----")
+  ) {
+    throw new Error("PRIVATE_KEY_FORMAT_INVALID");
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
@@ -85,7 +98,12 @@ async function getGoogleAccessToken() {
   const signer = createSign("RSA-SHA256");
   signer.update(unsignedToken);
   signer.end();
-  const signature = signer.sign(privateKey).toString("base64url");
+  let signature;
+  try {
+    signature = signer.sign(privateKey).toString("base64url");
+  } catch {
+    throw new Error("PRIVATE_KEY_FORMAT_INVALID");
+  }
   const assertion = `${unsignedToken}.${signature}`;
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -97,8 +115,34 @@ async function getGoogleAccessToken() {
     })
   });
   const data = await response.json();
-  if (!response.ok || !data.access_token) throw new Error("Google authentication failed");
+  if (!response.ok || !data.access_token) {
+    const reason = String(data.error || response.status).replace(/[^a-zA-Z0-9_.-]/g, "");
+    throw new Error(`GOOGLE_AUTH_REJECTED:${reason || "unknown"}`);
+  }
   return data.access_token;
+}
+
+function normalizePrivateKey(value) {
+  let raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    if (raw.startsWith("{")) {
+      const serviceAccount = JSON.parse(raw);
+      raw = String(serviceAccount.private_key || "").trim();
+    } else if (raw.startsWith('"') && raw.endsWith('"')) {
+      raw = String(JSON.parse(raw)).trim();
+    }
+  } catch {
+    // Continue below so the caller can show a clear format error.
+  }
+
+  return raw
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .trim();
 }
 
 async function listDriveSpreadsheets(accessToken) {
