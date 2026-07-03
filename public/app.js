@@ -1,0 +1,891 @@
+const NORTH_PLACES = [
+  "北辦", "林長一科", "林長二科", "林長小兒", "台大", "北榮", "國桃", "敏盛", "亞東", "振興",
+  "花慈", "竹北生醫", "陽大", "三總", "雙和", "北醫", "竹馬", "竹大", "淡馬", "萬芳",
+  "東馬", "北國", "大同", "北馬", "北慈", "林長", "輔大"
+];
+
+const SOUTH_PLACES = [
+  "中榮", "中榮秀傳", "濱秀", "中國", "中國醫", "中國兒科", "彰基", "中山", "大里仁愛",
+  "麻新", "嘉長", "嘉榮", "嘉基", "高榮", "高醫", "高醫岡山", "南辦", "中辦", "高辦",
+  "雲大", "雲林台大", "斗六成大", "成大", "高長", "長安", "屏基", "屏榮", "大林慈濟",
+  "中慈", "奇美", "高雄全統", "802"
+];
+
+const CARGO_CODES = [
+  "EX1", "EX2", "EX3", "EX4", "E1", "E2", "E3", "E4",
+  "ICE-H", "ICE-H2", "ICE-H-2", "ICE-H-3", "WMC-1", "WMC-2"
+];
+
+const SAMPLE_TEXT = `7/1
+"北辦至高醫岡山送達0800
+儀器_WMC-2"
+"高醫岡山至南辦取回1600
+儀器_WMC-2、A2、P4"
+"中辦至中國送達0730
+聯絡人_Daniel_0958169200
+儀器_CF(34478)"
+7/3
+"南辦至麻新0730到達
+聯絡人_Luke/Harper_0928086129/0971867665
+儀器_WMC-2、A2、P3、CF(36814)"
+"中國醫至北辦15:00取回
+儀器_ICE-TS"`;
+
+let schedules = [];
+let importWarnings = [];
+
+const rawInput = document.getElementById("rawInput");
+const scheduleBody = document.getElementById("scheduleBody");
+const summaryText = document.getElementById("summaryText");
+const northOutput = document.getElementById("northOutput");
+const southOutput = document.getElementById("southOutput");
+const rowTemplate = document.getElementById("rowTemplate");
+const instrumentSelect = document.getElementById("instrumentSelect");
+const trackingSummary = document.getElementById("trackingSummary");
+const trackingBody = document.getElementById("trackingBody");
+const trackingText = document.getElementById("trackingText");
+const rangeStartInput = document.getElementById("rangeStart");
+const rangeEndInput = document.getElementById("rangeEnd");
+const sheetImportBtn = document.getElementById("sheetImportBtn");
+const loginBtn = document.getElementById("loginBtn");
+const importStatus = document.getElementById("importStatus");
+
+setDefaultDateRange();
+
+document.querySelectorAll(".tab-btn").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((item) => item.classList.remove("active"));
+    document.querySelectorAll(".page-view").forEach((page) => page.classList.remove("active"));
+    button.classList.add("active");
+    document.getElementById(button.dataset.page).classList.add("active");
+  });
+});
+
+document.getElementById("parseBtn").addEventListener("click", () => {
+  importWarnings = [];
+  schedules = parseInput(rawInput.value);
+  renderTable();
+  renderOutputs();
+  renderTracker();
+});
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  rawInput.value = "";
+  schedules = [];
+  importWarnings = [];
+  renderTable();
+  renderOutputs();
+  renderTracker();
+});
+
+document.getElementById("loadSampleBtn").addEventListener("click", () => {
+  rawInput.value = SAMPLE_TEXT;
+  importWarnings = [];
+  schedules = parseInput(rawInput.value);
+  renderTable();
+  renderOutputs();
+  renderTracker();
+});
+
+instrumentSelect.addEventListener("change", () => {
+  renderTrackingResult();
+});
+
+rangeStartInput.addEventListener("change", () => {
+  updateDateRangeLimits();
+  renderOutputs();
+});
+
+rangeEndInput.addEventListener("change", () => {
+  updateDateRangeLimits();
+  renderOutputs();
+});
+
+sheetImportBtn.addEventListener("click", () => {
+  importFromGoogleSheet();
+});
+
+loginBtn.addEventListener("click", () => {
+  const identity = window.netlifyIdentity;
+  if (!identity) {
+    setImportStatus("登入功能需從 Netlify 網址開啟。", true);
+    return;
+  }
+  if (identity.currentUser()) {
+    identity.logout();
+  } else {
+    identity.open("login");
+  }
+});
+
+document.querySelectorAll(".copy-btn").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const target = document.getElementById(button.dataset.target);
+    target.select();
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(target.value);
+    } else {
+      document.execCommand("copy");
+    }
+    const original = button.textContent;
+    button.textContent = "已複製";
+    setTimeout(() => {
+      button.textContent = original;
+    }, 1000);
+  });
+});
+
+function normalizeText(value) {
+  return (value || "")
+    .normalize("NFKC")
+    .replace(/[⾄]/g, "至")
+    .replace(/[⼀]/g, "一")
+    .replace(/[⼆]/g, "二")
+    .replace(/[⼩]/g, "小")
+    .replace(/[⼤]/g, "大")
+    .replace(/[⽵]/g, "竹")
+    .replace(/[⾺]/g, "馬")
+    .replace(/[⾼]/g, "高")
+    .replace(/[⿇]/g, "麻")
+    .replace(/[⽃]/g, "斗")
+    .replace(/[⽣]/g, "生")
+    .replace(/[⾥]/g, "里")
+    .replace(/[⼭]/g, "山")
+    .replace(/[⼈]/g, "人")
+    .replace(/[⾏]/g, "行")
+    .replace(/[⾃]/g, "自")
+    .replace(/[⽅]/g, "方")
+    .replace(/[⽤]/g, "用")
+    .replace(/[⽂]/g, "文")
+    .replace(/[⾞]/g, "車")
+    .replace(/[“”]/g, "\"")
+    .replace(/[，]/g, ",")
+    .replace(/[：]/g, ":")
+    .replace(/[　]/g, " ")
+    .replace(/\r/g, "");
+}
+
+function parseInput(text) {
+  const normalized = normalizeText(text);
+  const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+  const blocks = [];
+  let currentDate = "";
+  let current = [];
+
+  lines.forEach((line) => {
+    const dateMatch = line.match(/^(\d{1,2}\/\d{1,2})$/);
+    if (dateMatch) {
+      if (current.length) blocks.push({ date: currentDate, lines: current });
+      currentDate = dateMatch[1];
+      current = [];
+      return;
+    }
+
+    const cleaned = line.replace(/^"+|"+$/g, "").trim();
+    if (/^\d{1,2}\/\d{1,2}$/.test(cleaned)) {
+      if (current.length) blocks.push({ date: currentDate, lines: current });
+      currentDate = cleaned;
+      current = [];
+      return;
+    }
+
+    if (line.startsWith("\"") && current.length) {
+      blocks.push({ date: currentDate, lines: current });
+      current = [];
+    }
+    current.push(cleaned);
+  });
+
+  if (current.length) blocks.push({ date: currentDate, lines: current });
+
+  return blocks
+    .map((block, index) => parseBlock(block, index))
+    .filter(Boolean);
+}
+
+function parseBlock(block, index) {
+  const routeLine = block.lines[0] || "";
+  const contactLine = block.lines.find((line) => line.startsWith("聯絡人_")) || "";
+  const instrumentLine = block.lines.find((line) => line.startsWith("儀器_")) || "";
+  const route = parseRoute(routeLine);
+  if (route.missingOrigin) return null;
+
+  const contact = parseContact(contactLine);
+  const instruments = instrumentLine.replace(/^儀器_/, "").trim();
+  const region = classifyRouteRegion(route.from, route.to);
+
+  return {
+    id: `${Date.now()}-${index}`,
+    date: block.date,
+    from: route.from,
+    to: route.to,
+    time: route.time,
+    action: route.action,
+    contact: contact.name || "業務",
+    phone: contact.phone,
+    contactEntries: contact.entries,
+    instruments,
+    region,
+    delivery: classifyDelivery(instruments),
+    parseWarning: route.joinedNumericPlaceTime
+  };
+}
+
+function parseRoute(line) {
+  let clean = line.replace(/\s+/g, "").replace(/^"+|"+$/g, "");
+  let action = "";
+  const hasPickup = /取回/.test(clean);
+  const hasDelivery = /送達|抵達|到達/.test(clean);
+  const hasColonTime = /\d{1,2}:\d{2}/.test(clean);
+  const standaloneNumericDestination = hasStandaloneNumericDestination(clean);
+  const joinedNumericPlaceTime =
+    /至\d{3,}\d{1,2}:\d{2}(?:送達|抵達|到達|取回)/.test(clean) ||
+    /至\d{7,}(?:送達|抵達|到達|取回)/.test(clean);
+
+  if (hasPickup) action = "取回";
+  if (hasDelivery) action = "送達";
+
+  const time = standaloneNumericDestination ? "" : extractTime(clean);
+  clean = clean.replace(/\d{1,2}:\d{2}/g, "");
+  if (!hasColonTime && !standaloneNumericDestination) {
+    clean = clean
+      .replace(/(送達|抵達|到達|取回)(\d{3,4})/g, "$1")
+      .replace(/(\d{3,4})(送達|抵達|到達|取回)/g, "$2");
+  }
+  clean = clean
+    .replace(/備取\d*:?[^至送取抵到]*/g, "")
+    .replace(/送達|抵達|到達|取回/g, "");
+
+  const separatorIndex = clean.indexOf("至");
+  const from = separatorIndex >= 0 ? clean.slice(0, separatorIndex) : clean;
+  const to = separatorIndex >= 0 ? clean.slice(separatorIndex + 1) : "";
+  return {
+    from: from || "未辨識",
+    to: to || "未辨識",
+    time,
+    action,
+    missingOrigin: separatorIndex === 0,
+    joinedNumericPlaceTime
+  };
+}
+
+function hasStandaloneNumericDestination(line) {
+  const numericPlaces = [...NORTH_PLACES, ...SOUTH_PLACES].filter((place) => /^\d+$/.test(place));
+  return numericPlaces.some((place) =>
+    new RegExp(`至${place}(?:送達|抵達|到達|取回)$`).test(line)
+  );
+}
+
+function extractTime(line) {
+  const colon = line.match(/(\d{1,2}):(\d{2})/);
+  if (colon) return `${colon[1].padStart(2, "0")}:${colon[2]}`;
+
+  const compact = line.match(/(?:送達|抵達|到達|取回)(\d{3,4})|(\d{3,4})(?:送達|抵達|到達|取回)/);
+  if (!compact) return "";
+  const digits = (compact[1] || compact[2]).padStart(4, "0");
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+function parseContact(line) {
+  if (!line) return { name: "業務", phone: "", entries: [] };
+  const body = line.replace(/^聯絡人_/, "").trim();
+  const parts = body.split("_");
+  const name = (parts[0] || "業務").trim();
+  const phoneText = (parts.slice(1).join("_") || "").trim();
+  const names = splitContactNames(name);
+  const phones = splitPhoneNumbers(phoneText);
+  const entries = names
+    .map((contactName, index) => ({
+      name: contactName,
+      phone: phones[index] || (phones.length === 1 ? phones[0] : "")
+    }))
+    .filter((entry) => entry.name && entry.phone);
+  return { name, phone: phones[0] || phoneText, entries };
+}
+
+function splitContactNames(value) {
+  return normalizeText(value)
+    .split(/[\/,、]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function splitPhoneNumbers(value) {
+  return normalizeText(value)
+    .split(/[\/,、 ]+/)
+    .map((item) => item.replace(/[^\d]/g, ""))
+    .filter((item) => /^09\d{8}$/.test(item));
+}
+
+function findPhoneForContact(name) {
+  const target = normalizeText(name).trim().toLocaleLowerCase();
+  if (!target || target === "業務") return "";
+
+  const directory = new Map();
+  schedules.forEach((schedule) => {
+    (schedule.contactEntries || []).forEach((entry) => {
+      const key = normalizeText(entry.name).trim().toLocaleLowerCase();
+      if (key && entry.phone && !directory.has(key)) directory.set(key, entry.phone);
+    });
+
+    const names = splitContactNames(schedule.contact);
+    const phones = splitPhoneNumbers(schedule.phone);
+    names.forEach((contactName, index) => {
+      const key = normalizeText(contactName).trim().toLocaleLowerCase();
+      const phone = phones[index] || (phones.length === 1 ? phones[0] : "");
+      if (key && phone && !directory.has(key)) directory.set(key, phone);
+    });
+  });
+
+  return directory.get(target) || "";
+}
+
+function classifyRegion(from) {
+  if (placeMatchesList(from, SOUTH_PLACES)) return "south";
+  if (placeMatchesList(from, NORTH_PLACES)) return "north";
+  return "unknown";
+}
+
+function classifyRouteRegion(from, to) {
+  const originRegion = classifyRegion(from);
+  if (originRegion !== "unknown") return originRegion;
+  return classifyRegion(to);
+}
+
+function placeMatchesList(value, places) {
+  const normalized = normalizeText(value).trim();
+  return places.some((place) => place === "802" ? normalized === place : normalized.includes(place));
+}
+
+function scheduleNeedsReview(schedule) {
+  return Boolean(schedule.parseWarning) ||
+    classifyRegion(schedule.from) === "unknown" ||
+    classifyRegion(schedule.to) === "unknown";
+}
+
+function classifyDelivery(instruments) {
+  const normalized = normalizeText(instruments).toUpperCase();
+  return CARGO_CODES.some((code) => normalized.includes(code.toUpperCase())) ? "cargo" : "self";
+}
+
+function renderTable() {
+  scheduleBody.innerHTML = "";
+  if (!schedules.length) {
+    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="11">貼上資料後，這裡會顯示可編輯的行程。</td></tr>';
+    summaryText.textContent = "尚未產生行程";
+    return;
+  }
+
+  let previousRegion = "";
+  getSortedScheduleIndexes().forEach((index) => {
+    const schedule = schedules[index];
+    if (schedule.region !== previousRegion) {
+      scheduleBody.appendChild(createRegionDivider(schedule.region));
+      previousRegion = schedule.region;
+    }
+
+    const row = rowTemplate.content.firstElementChild.cloneNode(true);
+    if (scheduleNeedsReview(schedule)) {
+      row.classList.add("needs-review");
+      row.title = "醫院無法辨識，或數字院所與時間相連，請人工確認";
+      const warning = document.createElement("span");
+      warning.className = "review-warning";
+      warning.textContent = "❗️";
+      warning.title = "請人工確認此筆行程";
+      row.querySelector("[data-remove]").parentElement.prepend(warning);
+    }
+    row.querySelectorAll("[data-field]").forEach((field) => {
+      field.value = schedule[field.dataset.field] || "";
+      field.addEventListener("input", () => {
+        schedules[index][field.dataset.field] = field.value;
+        if (field.dataset.field === "contact" && !schedules[index].phone) {
+          const matchedPhone = findPhoneForContact(field.value);
+          if (matchedPhone) {
+            schedules[index].phone = matchedPhone;
+            row.querySelector('[data-field="phone"]').value = matchedPhone;
+          }
+        }
+        renderOutputs();
+        renderTracker({ keepSelection: true });
+      });
+      if (field.dataset.field === "from" || field.dataset.field === "to") {
+        field.addEventListener("change", () => {
+          schedules[index].region = classifyRouteRegion(schedules[index].from, schedules[index].to);
+          renderTable();
+          renderOutputs();
+          renderTracker({ keepSelection: true });
+        });
+      }
+    });
+    row.querySelector("[data-remove]").addEventListener("click", () => {
+      schedules.splice(index, 1);
+      renderTable();
+      renderOutputs();
+      renderTracker({ keepSelection: true });
+    });
+    scheduleBody.appendChild(row);
+  });
+
+  const northCount = schedules.filter((item) => item.region === "north").length;
+  const southCount = schedules.filter((item) => item.region === "south").length;
+  const reviewCount = schedules.filter(scheduleNeedsReview).length;
+  summaryText.textContent = `共 ${schedules.length} 筆，北區 ${northCount} 筆，中南區 ${southCount} 筆${reviewCount ? `，❗️待確認 ${reviewCount} 筆` : ""}；表格依日期與區域排序`;
+}
+
+function createRegionDivider(region) {
+  const row = document.createElement("tr");
+  const dividerClass = region === "south" ? "south-divider" : region === "north" ? "north-divider" : "unknown-divider";
+  row.className = `region-divider ${dividerClass}`;
+  const cell = document.createElement("td");
+  cell.colSpan = 11;
+  cell.textContent = region === "south" ? "中南區" : region === "north" ? "北區" : "❗️ 待確認區域";
+  row.appendChild(cell);
+  return row;
+}
+
+function getSortedScheduleIndexes() {
+  return schedules
+    .map((schedule, index) => ({ schedule, index }))
+    .sort((a, b) => {
+      const dateCompare = compareDate(a.schedule.date, b.schedule.date);
+      if (dateCompare) return dateCompare;
+
+      const regionCompare = getRegionSortValue(a.schedule.region) - getRegionSortValue(b.schedule.region);
+      if (regionCompare) return regionCompare;
+
+      const fromCompare = compareText(a.schedule.from, b.schedule.from);
+      if (fromCompare) return fromCompare;
+
+      const toCompare = compareText(a.schedule.to, b.schedule.to);
+      if (toCompare) return toCompare;
+
+      const instrumentCompare = compareText(a.schedule.instruments, b.schedule.instruments);
+      if (instrumentCompare) return instrumentCompare;
+
+      const deliveryCompare = getDeliverySortValue(a.schedule.delivery) - getDeliverySortValue(b.schedule.delivery);
+      if (deliveryCompare) return deliveryCompare;
+
+      const actionCompare = compareText(a.schedule.action, b.schedule.action);
+      if (actionCompare) return actionCompare;
+
+      const timeCompare = compareText(a.schedule.time, b.schedule.time);
+      if (timeCompare) return timeCompare;
+
+      const contactCompare = compareText(a.schedule.contact, b.schedule.contact);
+      if (contactCompare) return contactCompare;
+
+      const phoneCompare = compareText(a.schedule.phone, b.schedule.phone);
+      if (phoneCompare) return phoneCompare;
+
+      return a.index - b.index;
+    })
+    .map((item) => item.index);
+}
+
+function getRegionSortValue(region) {
+  if (region === "north") return 0;
+  if (region === "south") return 1;
+  return 2;
+}
+
+function getDeliverySortValue(delivery) {
+  if (delivery === "cargo") return 0;
+  if (delivery === "self") return 1;
+  return 2;
+}
+
+function compareText(a, b) {
+  return String(a || "").localeCompare(String(b || ""), "zh-Hant", {
+    numeric: true,
+    sensitivity: "base"
+  });
+}
+
+function compareDate(a, b) {
+  const parsedA = parseScheduleDate(a);
+  const parsedB = parseScheduleDate(b);
+  return parsedA - parsedB;
+}
+
+function parseScheduleDate(date) {
+  const match = String(date || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  const range = getSelectedDateRange();
+  if (!range) return Number(match[1]) * 100 + Number(match[2]);
+
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const candidateYears = [range.start.getFullYear() - 1, range.start.getFullYear(), range.start.getFullYear() + 1];
+  const matchedDate = candidateYears
+    .map((year) => new Date(year, month - 1, day))
+    .find((candidate) => candidate >= range.start && candidate <= range.end);
+  return matchedDate ? matchedDate.getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function setDefaultDateRange() {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const daysUntilNextMonday = ((8 - today.getDay()) % 7) || 7;
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntilNextMonday);
+  rangeStartInput.value = formatDateInput(start);
+  rangeEndInput.value = formatDateInput(end);
+  updateDateRangeLimits();
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function updateDateRangeLimits() {
+  const start = parseDateInput(rangeStartInput.value);
+  if (!start) return;
+
+  const latestEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 9);
+  rangeEndInput.min = formatDateInput(start);
+  rangeEndInput.max = formatDateInput(latestEnd);
+
+  const end = parseDateInput(rangeEndInput.value);
+  if (!end || end < start) rangeEndInput.value = formatDateInput(start);
+  if (end && end > latestEnd) rangeEndInput.value = formatDateInput(latestEnd);
+}
+
+function getSelectedDateRange() {
+  const start = parseDateInput(rangeStartInput.value);
+  const end = parseDateInput(rangeEndInput.value);
+  if (!start || !end || end < start) return null;
+  const days = Math.round((end - start) / 86400000) + 1;
+  return days <= 10 ? { start, end, days } : null;
+}
+
+function getSchedulesForSelectedRange() {
+  const range = getSelectedDateRange();
+  if (!range) return [];
+
+  return schedules.filter((schedule) => {
+    const match = String(schedule.date || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (!match) return false;
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const candidateYears = [range.start.getFullYear() - 1, range.start.getFullYear(), range.start.getFullYear() + 1];
+    return candidateYears.some((year) => {
+      const candidate = new Date(year, month - 1, day);
+      return candidate >= range.start && candidate <= range.end;
+    });
+  });
+}
+
+function formatSelectedRangeLabel() {
+  const range = getSelectedDateRange();
+  if (!range) return "日期範圍無效";
+  return `${range.start.getMonth() + 1}/${range.start.getDate()} 至 ${range.end.getMonth() + 1}/${range.end.getDate()}`;
+}
+
+function renderOutputs() {
+  northOutput.value = buildMessage("north");
+  southOutput.value = buildMessage("south");
+}
+
+async function importFromGoogleSheet() {
+  const range = getSelectedDateRange();
+  if (!range) {
+    setImportStatus("日期範圍最多只能選擇 10 日。", true);
+    return;
+  }
+  if (location.protocol === "file:") {
+    setImportStatus("試算表匯入需在 Netlify 網址使用；本機仍可手動貼上資料。", true);
+    return;
+  }
+
+  const identity = window.netlifyIdentity;
+  const user = identity?.currentUser();
+  if (!user) {
+    setImportStatus("請先登入後再匯入私人試算表。", true);
+    identity?.open("login");
+    return;
+  }
+
+  sheetImportBtn.disabled = true;
+  setImportStatus("正在讀取合併結果...");
+  try {
+    const token = await user.jwt();
+    const params = new URLSearchParams({
+      start: rangeStartInput.value,
+      end: rangeEndInput.value
+    });
+    const response = await fetch(`/api/schedules?${params}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "無法讀取試算表");
+
+    importWarnings = Array.isArray(data.warnings) ? data.warnings : [];
+    rawInput.value = recordsToRawText(data.records || []);
+    schedules = parseInput(rawInput.value);
+    renderTable();
+    renderOutputs();
+    renderTracker();
+    const warningText = importWarnings.length ? `；❗️ ${importWarnings.join("；")}` : "";
+    setImportStatus(
+      `已匯入 ${schedules.length} 筆，範圍 ${formatSelectedRangeLabel()}${warningText}`,
+      importWarnings.length > 0
+    );
+  } catch (error) {
+    setImportStatus(error.message || "匯入失敗，請稍後再試。", true);
+  } finally {
+    sheetImportBtn.disabled = false;
+  }
+}
+
+function recordsToRawText(records) {
+  const grouped = new Map();
+  records.forEach((record) => {
+    const date = String(record.date || "");
+    const text = String(record.text || "").trim().replace(/^"+|"+$/g, "");
+    if (!date || !text) return;
+    if (!grouped.has(date)) grouped.set(date, []);
+    grouped.get(date).push(text);
+  });
+
+  const lines = [];
+  grouped.forEach((entries, date) => {
+    if (lines.length) lines.push("");
+    lines.push(date);
+    entries.forEach((entry) => lines.push(`"${entry}"`));
+  });
+  return lines.join("\n");
+}
+
+function setImportStatus(message, isError = false) {
+  importStatus.textContent = message;
+  importStatus.classList.toggle("error", isError);
+}
+
+function initializeNetlifyIdentity() {
+  const identity = window.netlifyIdentity;
+  if (!identity) return;
+
+  const updateLoginButton = (user) => {
+    loginBtn.textContent = user ? "登出" : "登入";
+  };
+
+  identity.on("init", (user) => {
+    updateLoginButton(user);
+    if (user && location.protocol !== "file:") importFromGoogleSheet();
+  });
+  identity.on("login", (user) => {
+    updateLoginButton(user);
+    identity.close();
+    importFromGoogleSheet();
+  });
+  identity.on("logout", () => {
+    updateLoginButton(null);
+    setImportStatus("已登出。");
+  });
+  identity.init();
+}
+
+function renderTracker(options = {}) {
+  const previousSelection = options.keepSelection ? instrumentSelect.value : "";
+  const instruments = getAvailableInstruments();
+  instrumentSelect.innerHTML = "";
+
+  if (!instruments.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "請先產生行程";
+    instrumentSelect.appendChild(option);
+    renderTrackingResult();
+    return;
+  }
+
+  instruments.forEach((instrument) => {
+    const option = document.createElement("option");
+    option.value = instrument;
+    option.textContent = instrument;
+    instrumentSelect.appendChild(option);
+  });
+
+  if (previousSelection && instruments.includes(previousSelection)) {
+    instrumentSelect.value = previousSelection;
+  }
+  renderTrackingResult();
+}
+
+function getAvailableInstruments() {
+  const seen = new Set();
+  schedules.forEach((schedule) => {
+    splitInstruments(schedule.instruments).forEach((instrument) => seen.add(instrument));
+  });
+  return [...seen].sort((a, b) => compareText(a, b));
+}
+
+function splitInstruments(value) {
+  return normalizeText(value)
+    .split(/[、,，/]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function renderTrackingResult() {
+  const selected = instrumentSelect.value;
+  trackingBody.innerHTML = "";
+
+  if (!selected) {
+    trackingSummary.textContent = "調度次數：0次";
+    trackingText.value = "";
+    trackingBody.innerHTML = '<tr class="empty-row"><td colspan="6">請先在第一頁貼上資料並產生行程。</td></tr>';
+    return;
+  }
+
+  const routes = schedules
+    .filter((schedule) => scheduleHasInstrument(schedule, selected))
+    .slice()
+    .sort(compareSchedulesForTracking);
+
+  trackingSummary.textContent = `調度次數：${routes.length}次`;
+
+  if (!routes.length) {
+    trackingText.value = "";
+    trackingBody.innerHTML = '<tr class="empty-row"><td colspan="6">找不到這個儀器的行程。</td></tr>';
+    return;
+  }
+
+  routes.forEach((route) => {
+    const row = document.createElement("tr");
+    if (scheduleNeedsReview(route)) row.classList.add("needs-review");
+    [
+      route.date || "未填日期",
+      `${scheduleNeedsReview(route) ? "❗️ " : ""}${route.from}`,
+      route.to,
+      route.action || "",
+      route.time || "",
+      route.contact || "業務"
+    ].forEach((value) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
+    trackingBody.appendChild(row);
+  });
+
+  trackingText.value = buildTrackingText(selected, routes);
+}
+
+function scheduleHasInstrument(schedule, selected) {
+  return splitInstruments(schedule.instruments).some((instrument) => instrument === selected);
+}
+
+function compareSchedulesForTracking(a, b) {
+  const dateCompare = compareDate(a.date, b.date);
+  if (dateCompare) return dateCompare;
+
+  const timeCompare = compareText(a.time, b.time);
+  if (timeCompare) return timeCompare;
+
+  const fromCompare = compareText(a.from, b.from);
+  if (fromCompare) return fromCompare;
+
+  return compareText(a.to, b.to);
+}
+
+function buildTrackingText(instrument, routes) {
+  const lines = [`${instrument} 路徑追蹤`, `調度次數：${routes.length}次`, ""];
+  routes.forEach((route) => {
+    const details = [route.action, route.time, route.contact || "業務"].filter(Boolean).join(" ");
+    lines.push(`${scheduleNeedsReview(route) ? "❗️ " : ""}${route.from} 至 ${route.to}${details ? `  ${details}` : ""}`);
+  });
+  return lines.join("\n");
+}
+
+function buildMessage(region) {
+  const title = region === "north" ? "本週北部儀器行程更新" : "本週中南區儀器行程更新";
+  const outputSchedules = getSchedulesForSelectedRange();
+  const own = outputSchedules.filter((item) => item.region === region);
+  const unknown = outputSchedules.filter((item) => item.region === "unknown");
+  const cross = outputSchedules.filter((item) => item.region !== region && item.region !== "unknown" && isCrossRegionReminder(item, region));
+  const cargo = own.filter((item) => item.delivery === "cargo");
+  const self = own.filter((item) => item.delivery === "self");
+  const lines = [title, `日期範圍：${formatSelectedRangeLabel()}`, "請各業務務必確認行程內容謝謝"];
+
+  if (importWarnings.length) {
+    lines.push("", "❗️ 試算表提醒");
+    importWarnings.forEach((warning) => lines.push(`❗️ ${warning}`));
+  }
+
+  if (unknown.length) {
+    lines.push("", "❗️ 待確認區域");
+    appendGrouped(lines, unknown);
+  }
+
+  if (cross.length) {
+    lines.push("", "跨區提醒");
+    appendGrouped(lines, cross);
+  }
+
+  lines.push("", "===============物流貨運");
+  appendGrouped(lines, cargo);
+  lines.push("", "================ 同仁自送");
+  appendGrouped(lines, self);
+  return lines.join("\n").trim();
+}
+
+function isCrossRegionReminder(item, targetRegion) {
+  const destinationRegion = classifyRegion(item.to);
+  return targetRegion === destinationRegion;
+}
+
+function appendGrouped(lines, items) {
+  if (!items.length) {
+    lines.push("目前無行程");
+    return;
+  }
+
+  const grouped = new Map();
+  items.forEach((item) => {
+    const key = item.date || "未填日期";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(item);
+  });
+
+  [...grouped.entries()].forEach(([date, entries], dateIndex) => {
+    if (dateIndex > 0) lines.push("");
+    lines.push(`<<${date}>>`);
+    entries.forEach((item, index) => {
+      if (index > 0) lines.push("");
+      lines.push(formatSchedule(item));
+    });
+  });
+}
+
+function formatSchedule(item) {
+  const suffix = formatTimeAction(item);
+  const warning = scheduleNeedsReview(item) ? "❗️ " : "";
+  const lines = [
+    `${warning}📍 ${item.from} 至 ${item.to}${suffix}`,
+    `👤 聯絡人：${item.contact || "業務"}`
+  ];
+  if (item.phone) lines.push(`📞 電話：${item.phone}`);
+  lines.push(`📦 儀器：${item.instruments || "未填"}`);
+  return lines.join("\n");
+}
+
+function formatTimeAction(item) {
+  if (!item.time && !item.action) return "";
+  if (item.time && item.action) return `（${item.time}${item.action}）`;
+  if (item.time) return `（${item.time}）`;
+  return `（${item.action}）`;
+}
+
+renderTable();
+renderOutputs();
+renderTracker();
+initializeNetlifyIdentity();
