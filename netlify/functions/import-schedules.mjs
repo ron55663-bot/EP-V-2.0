@@ -290,20 +290,29 @@ function extractMergedResults(rows, range) {
   });
 
   headers.forEach(({ rowIndex, columnIndex }) => {
-    const isoDate = findDateForResultColumn(
-      rows,
-      rowIndex,
-      columnIndex,
-      range.startDate.getUTCFullYear()
-    );
-    if (!isoDate || isoDate < range.start || isoDate > range.end) return;
+    const dateColumn = findDateColumn(rows[rowIndex], columnIndex);
+    if (dateColumn < 0) return;
+    let currentDate = "";
 
     for (let dataRow = rowIndex + 1; dataRow < rows.length; dataRow += 1) {
+      const parsedDate = googleValueToIsoDate(
+        rows[dataRow]?.[dateColumn],
+        range.startDate.getUTCFullYear()
+      );
+      if (parsedDate) currentDate = parsedDate;
+
       const text = String(rows[dataRow]?.[columnIndex] ?? "").trim();
-      if (!text) continue;
+      if (
+        !text ||
+        !currentDate ||
+        currentDate < range.start ||
+        currentDate > range.end
+      ) {
+        continue;
+      }
       records.push({
-        date: isoToMonthDay(isoDate),
-        isoDate,
+        date: isoToMonthDay(currentDate),
+        isoDate: currentDate,
         text
       });
     }
@@ -312,17 +321,14 @@ function extractMergedResults(rows, range) {
   return records;
 }
 
-function findDateForResultColumn(rows, headerRow, resultColumn, fallbackYear) {
-  const firstCandidateRow = Math.max(0, headerRow - 4);
+function findDateColumn(headerRow, resultColumn) {
   const firstCandidateColumn = Math.max(0, resultColumn - 10);
-
-  for (let rowIndex = headerRow - 1; rowIndex >= firstCandidateRow; rowIndex -= 1) {
-    for (let columnIndex = resultColumn; columnIndex >= firstCandidateColumn; columnIndex -= 1) {
-      const parsed = googleValueToIsoDate(rows[rowIndex]?.[columnIndex], fallbackYear);
-      if (parsed) return parsed;
+  for (let columnIndex = resultColumn - 1; columnIndex >= firstCandidateColumn; columnIndex -= 1) {
+    if (String(headerRow?.[columnIndex] ?? "").trim() === "日期") {
+      return columnIndex;
     }
   }
-  return "";
+  return -1;
 }
 
 function googleValueToIsoDate(value, fallbackYear) {
@@ -366,7 +372,7 @@ function jsonResponse(statusCode, body) {
 
 export const testHelpers = {
   extractMergedResults,
-  findDateForResultColumn,
+  findDateColumn,
   getMonthKeys,
   googleValueToIsoDate,
   parseMonthlyFileName,
