@@ -28,12 +28,14 @@ export async function handler(event, context) {
     const warnings = [...resolution.warnings];
 
     for (const selection of resolution.selections) {
-      const rows = await getMergedResultRows(accessToken, selection.file.id);
-      if (!rows) {
+      const sheets = await getMergedResultSheets(accessToken, selection.file.id);
+      if (!sheets.length) {
         warnings.push(`${selection.key} 的「合併結果」欄位不存在`);
         continue;
       }
-      records.push(...extractMergedResults(rows, range));
+      sheets.forEach(({ rows }) => {
+        records.push(...extractMergedResults(rows, range));
+      });
     }
 
     records.sort((a, b) => a.isoDate.localeCompare(b.isoDate));
@@ -247,7 +249,7 @@ async function getSheetTitles(accessToken, spreadsheetId) {
 
 async function getSheetRows(accessToken, spreadsheetId, sheetTitle) {
   const escapedTitle = sheetTitle.replace(/'/g, "''");
-  const sheetRange = encodeURIComponent(`'${escapedTitle}'!O:Q`);
+  const sheetRange = encodeURIComponent(`'${escapedTitle}'!A:ZZ`);
   const query = new URLSearchParams({
     majorDimension: "ROWS",
     valueRenderOption: "UNFORMATTED_VALUE",
@@ -262,43 +264,65 @@ async function getSheetRows(accessToken, spreadsheetId, sheetTitle) {
   return data.values || [];
 }
 
-async function getMergedResultRows(accessToken, spreadsheetId) {
+async function getMergedResultSheets(accessToken, spreadsheetId) {
   const titles = await getSheetTitles(accessToken, spreadsheetId);
+  const matches = [];
   for (const title of titles) {
     const rows = await getSheetRows(accessToken, spreadsheetId, title);
-    if (rows.some((row) => String(row[2] ?? "").trim() === "合併結果")) return rows;
+    const hasMergedResult = rows.some((row) =>
+      row.some((cell) => String(cell ?? "").trim() === "合併結果")
+    );
+    if (hasMergedResult) matches.push({ title, rows });
   }
-  return null;
+  return matches;
 }
 
 function extractMergedResults(rows, range) {
   const records = [];
-  let foundMergedSection = false;
-  let currentDate = "";
+  const headers = [];
 
-  rows.forEach((row) => {
-    const dateValue = row[0];
-    const result = String(row[2] ?? "").trim();
-
-    if (result === "合併結果") {
-      foundMergedSection = true;
-      currentDate = "";
-      return;
-    }
-    if (!foundMergedSection || !result) return;
-
-    const parsedDate = googleValueToIsoDate(dateValue, range.startDate.getUTCFullYear());
-    if (parsedDate) currentDate = parsedDate;
-    if (!currentDate || currentDate < range.start || currentDate > range.end) return;
-
-    records.push({
-      date: isoToMonthDay(currentDate),
-      isoDate: currentDate,
-      text: result
+  rows.forEach((row, rowIndex) => {
+    row.forEach((cell, columnIndex) => {
+      if (String(cell ?? "").trim() === "合併結果") {
+        headers.push({ rowIndex, columnIndex });
+      }
     });
   });
 
+  headers.forEach(({ rowIndex, columnIndex }) => {
+    const isoDate = findDateForResultColumn(
+      rows,
+      rowIndex,
+      columnIndex,
+      range.startDate.getUTCFullYear()
+    );
+    if (!isoDate || isoDate < range.start || isoDate > range.end) return;
+
+    for (let dataRow = rowIndex + 1; dataRow < rows.length; dataRow += 1) {
+      const text = String(rows[dataRow]?.[columnIndex] ?? "").trim();
+      if (!text) continue;
+      records.push({
+        date: isoToMonthDay(isoDate),
+        isoDate,
+        text
+      });
+    }
+  });
+
   return records;
+}
+
+function findDateForResultColumn(rows, headerRow, resultColumn, fallbackYear) {
+  const firstCandidateRow = Math.max(0, headerRow - 4);
+  const firstCandidateColumn = Math.max(0, resultColumn - 10);
+
+  for (let rowIndex = headerRow - 1; rowIndex >= firstCandidateRow; rowIndex -= 1) {
+    for (let columnIndex = resultColumn; columnIndex >= firstCandidateColumn; columnIndex -= 1) {
+      const parsed = googleValueToIsoDate(rows[rowIndex]?.[columnIndex], fallbackYear);
+      if (parsed) return parsed;
+    }
+  }
+  return "";
 }
 
 function googleValueToIsoDate(value, fallbackYear) {
@@ -342,6 +366,7 @@ function jsonResponse(statusCode, body) {
 
 export const testHelpers = {
   extractMergedResults,
+  findDateForResultColumn,
   getMonthKeys,
   googleValueToIsoDate,
   parseMonthlyFileName,
