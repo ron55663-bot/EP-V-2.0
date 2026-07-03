@@ -105,7 +105,7 @@ sheetImportBtn.addEventListener("click", () => {
   importFromGoogleSheet();
 });
 
-loginBtn.addEventListener("click", () => {
+loginBtn.addEventListener("click", async () => {
   const identity = window.netlifyIdentity;
   if (!identity) {
     setImportStatus("登入功能需從 Netlify 網址開啟。", true);
@@ -114,7 +114,13 @@ loginBtn.addEventListener("click", () => {
   if (identity.currentUser()) {
     identity.logout();
   } else {
-    identity.open("login");
+    try {
+      const loginUrl = await identity.gotrue.loginExternalUrl("google");
+      window.location.assign(loginUrl);
+    } catch {
+      setImportStatus("請確認 Netlify Identity 已啟用 Google 登入。", true);
+      identity.open("login");
+    }
   }
 });
 
@@ -608,7 +614,7 @@ async function importFromGoogleSheet() {
   const identity = window.netlifyIdentity;
   const user = identity?.currentUser();
   if (!user) {
-    setImportStatus("請先登入後再匯入私人試算表。", true);
+    setImportStatus("請先使用受邀的 Google 帳號登入。", true);
     identity?.open("login");
     return;
   }
@@ -674,7 +680,7 @@ function initializeNetlifyIdentity() {
   if (!identity) return;
 
   const updateLoginButton = (user) => {
-    loginBtn.textContent = user ? "登出" : "登入";
+    loginBtn.textContent = user ? "登出" : "使用 Google 登入";
   };
 
   identity.on("init", (user) => {
