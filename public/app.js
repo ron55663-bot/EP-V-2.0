@@ -1,4 +1,4 @@
-const APP_VERSION = "V2.5.0";
+const APP_VERSION = "V2.5.1";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 
 const NORTH_PLACES = [
