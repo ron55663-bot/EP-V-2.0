@@ -8,9 +8,17 @@
 </head>
 <body>
   <main class="app-shell">
-    <nav class="page-tabs" aria-label="功能頁面">
-      <button class="tab-btn active" type="button" data-page="messagePage">Line 訊息產生</button>
-      <button class="tab-btn" type="button" data-page="trackingPage">物流設備路徑追蹤</button>
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">EP</div>
+      <div>
+        <p class="app-kicker">設備物流調度</p>
+        <h1>行程工作台</h1>
+      </div>
+    </header>
+
+    <nav class="page-tabs" role="tablist" aria-label="功能頁面">
+      <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-page="messagePage">Line 訊息產生</button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-page="trackingPage">物流設備路徑追蹤</button>
     </nav>
 
     <section id="messagePage" class="page-view active">
@@ -21,27 +29,32 @@
             <h1>Line 儀器行程產生器</h1>
             <p>貼上原始行程，產生北區與中南區 Line 訊息。</p>
           </div>
-          <button id="loadSampleBtn" type="button" class="ghost-btn">載入範例</button>
+          <button id="toggleSourceBtn" type="button" class="collapse-btn" aria-expanded="true" aria-controls="sourceContent">
+            <span>收合</span><span class="collapse-icon" aria-hidden="true">⌃</span>
+          </button>
         </div>
-        <textarea id="rawInput" spellcheck="false" placeholder="請貼上 PDF 內同格式的行程資料，例如：&#10;7/1&#10;&quot;北辦至高醫岡山送達0800&#10;聯絡人_業務&#10;儀器_WMC-2&quot;"></textarea>
-        <div class="source-controls">
-          <div class="date-range">
-            <label for="rangeStart">開始日期
-              <input id="rangeStart" type="date">
-            </label>
-            <label for="rangeEnd">結束日期
-              <input id="rangeEnd" type="date">
-            </label>
+        <div id="sourceContent" class="source-content">
+          <textarea id="rawInput" spellcheck="false" placeholder="請貼上 PDF 內同格式的行程資料，例如：&#10;7/1&#10;&quot;北辦至高醫岡山送達0800&#10;聯絡人_業務&#10;儀器_WMC-2&quot;"></textarea>
+          <div class="source-controls">
+            <div class="date-range">
+              <label for="rangeStart">開始日期
+                <input id="rangeStart" type="date">
+              </label>
+              <label for="rangeEnd">結束日期
+                <input id="rangeEnd" type="date">
+              </label>
+            </div>
+            <div class="import-row">
+              <button id="sheetImportBtn" type="button" class="primary-btn">從試算表匯入</button>
+              <button id="loginBtn" type="button" class="ghost-btn">使用 Google 登入</button>
+            </div>
+            <p id="importStatus" class="import-status" aria-live="polite"></p>
           </div>
-          <div class="import-row">
-            <button id="sheetImportBtn" type="button" class="primary-btn">從試算表匯入</button>
-            <button id="loginBtn" type="button" class="ghost-btn">使用 Google 登入</button>
+          <div class="action-row">
+            <button id="parseBtn" type="button" class="primary-btn">產生訊息</button>
+            <button id="loadSampleBtn" type="button" class="ghost-btn">載入範例</button>
+            <button id="clearBtn" type="button" class="text-btn">清空</button>
           </div>
-          <p id="importStatus" class="import-status" aria-live="polite"></p>
-        </div>
-        <div class="action-row">
-          <button id="parseBtn" type="button" class="primary-btn">產生訊息</button>
-          <button id="clearBtn" type="button" class="ghost-btn">清空</button>
         </div>
       </div>
 
@@ -110,13 +123,22 @@
             <p>從已解析的行程中選擇單一儀器，查看它的調度走向。</p>
           </div>
         </div>
+        <section class="weekly-statistics" aria-labelledby="weeklyStatsTitle">
+          <div class="section-head">
+            <h2 id="weeklyStatsTitle">每週借用統計</h2>
+            <span>週一至週日</span>
+          </div>
+          <div id="weeklyStatsBody" class="weekly-stats-body">
+            <p class="statistics-empty">請先在第一頁產生行程。</p>
+          </div>
+        </section>
         <div class="tracking-controls">
           <label for="instrumentSelect">選擇儀器</label>
           <select id="instrumentSelect">
             <option value="">請先產生行程</option>
           </select>
         </div>
-        <div class="tracking-summary" id="trackingSummary">調度次數：0次</div>
+        <div class="tracking-summary" id="trackingSummary">調度次數：0次｜借用次數：0次</div>
         <div class="tracking-table-wrap">
           <table class="tracking-table">
             <thead>
@@ -137,6 +159,7 @@
         <textarea id="trackingText" class="tracking-text" readonly></textarea>
       </section>
     </section>
+    <footer class="app-footer">Designed by Ron, with assistance from Billy. <span id="appVersion"></span></footer>
   </main>
 
   <template id="rowTemplate">
@@ -162,6 +185,7 @@
         <select data-field="action">
           <option value="">空白</option>
           <option value="送達">送達</option>
+          <option value="隔日送達">隔日送達</option>
           <option value="取回">取回</option>
         </select>
       </td>

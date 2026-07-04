@@ -9,7 +9,8 @@
   --accent-strong: #0f5156;
   --soft: #e9f2f1;
   --warn: #9a5a16;
-  --shadow: 0 18px 48px rgba(38, 52, 64, 0.12);
+  --danger: #a12622;
+  --shadow: 0 5px 18px rgba(38, 52, 64, 0.07);
 }
 
 * {
@@ -36,22 +37,71 @@ button {
   cursor: pointer;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(25, 106, 110, 0.25);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .app-shell {
   width: min(1480px, calc(100% - 28px));
   margin: 0 auto;
-  padding: 18px 0 28px;
+  padding: 14px 0 28px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 52px;
+  padding: 4px 4px 12px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.app-header h1 {
+  font-size: 20px;
+}
+
+.app-kicker {
+  margin: 0 0 1px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .page-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  gap: 8px;
+  gap: 3px;
   margin-bottom: 14px;
+  padding-top: 3px;
   border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .tab-btn {
-  min-height: 42px;
-  border-radius: 8px 8px 0 0;
+  min-height: 44px;
+  border-radius: 6px 6px 0 0;
   padding: 0 16px;
   color: var(--muted);
   background: transparent;
@@ -59,8 +109,14 @@ button {
 }
 
 .tab-btn.active {
-  color: #fff;
-  background: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel);
+  box-shadow: inset 0 -3px var(--accent);
+}
+
+.tab-btn:hover {
+  color: var(--accent-strong);
+  background: var(--soft);
 }
 
 .page-view {
@@ -69,6 +125,14 @@ button {
 
 .page-view.active {
   display: block;
+}
+
+.app-footer {
+  padding: 18px 4px 4px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .workspace,
@@ -104,6 +168,21 @@ button {
   flex-direction: column;
 }
 
+.source-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.input-pane.source-collapsed {
+  min-height: 0;
+}
+
+.input-pane.source-collapsed .source-content {
+  display: none;
+}
+
 .edit-pane {
   min-height: 430px;
   overflow: hidden;
@@ -120,6 +199,28 @@ button {
 
 .pane-head.tight {
   padding: 12px 14px;
+}
+
+.collapse-btn {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: var(--accent-strong);
+  background: var(--soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.collapse-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.input-pane.source-collapsed .collapse-icon {
+  transform: rotate(180deg);
 }
 
 h1,
@@ -223,7 +324,8 @@ p {
 
 .primary-btn,
 .ghost-btn,
-.copy-btn {
+.copy-btn,
+.text-btn {
   min-height: 38px;
   border-radius: 6px;
   padding: 0 14px;
@@ -250,6 +352,15 @@ p {
   background: #d9e9e7;
 }
 
+.text-btn {
+  color: var(--danger);
+  background: transparent;
+}
+
+.text-btn:hover {
+  background: #f8e8e6;
+}
+
 .copy-btn {
   color: #fff;
   background: var(--accent);
@@ -258,6 +369,124 @@ p {
 .tracking-pane {
   min-height: 640px;
   overflow: hidden;
+}
+
+.weekly-statistics {
+  border-bottom: 1px solid var(--line);
+  background: #f8faf7;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+}
+
+.section-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.weekly-stats-body {
+  padding: 0 16px 16px;
+}
+
+.statistics-empty {
+  margin: 0;
+  padding: 18px 0;
+  text-align: center;
+}
+
+.week-stat-block {
+  border-top: 1px solid var(--line);
+}
+
+.week-stat-block + .week-stat-block {
+  margin-top: 18px;
+}
+
+.week-stat-block h3 {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--accent-strong);
+  font-size: 14px;
+}
+
+.ranking-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+
+.ranking-panel h4 {
+  margin: 0;
+  padding-bottom: 8px;
+  color: #394650;
+  font-size: 13px;
+}
+
+.ranking-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: ranking;
+}
+
+.ranking-list li {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 38px;
+  align-items: center;
+  border-top: 1px solid #dde3dc;
+  padding: 0 7px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  counter-increment: ranking;
+}
+
+.ranking-list li::after {
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--ranking-width, 0%);
+  border-radius: 4px;
+  background: #dceceb;
+  content: "";
+}
+
+.ranking-list li::before {
+  content: counter(ranking) ".";
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.ranking-list li span {
+  overflow-wrap: anywhere;
+}
+
+.ranking-list strong {
+  color: var(--accent-strong);
+  white-space: nowrap;
+}
+
+.ranking-list .ranking-empty {
+  display: block;
+  padding: 9px 0;
+  color: var(--muted);
+  counter-increment: none;
+}
+
+.ranking-list .ranking-empty::before {
+  content: "";
 }
 
 .tracking-controls {
@@ -286,9 +515,9 @@ p {
 }
 
 .tracking-summary {
-  padding: 16px;
+  padding: 14px 16px;
   color: var(--accent-strong);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 900;
   border-bottom: 1px solid var(--line);
 }
@@ -322,6 +551,8 @@ p {
   width: 100%;
   max-height: 592px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 table {
@@ -412,10 +643,22 @@ td input[data-field="contact"] {
 }
 
 .review-warning {
-  display: inline-block;
+  width: 30px;
+  height: 30px;
   margin-right: 4px;
-  font-size: 16px;
+  padding: 0;
+  color: #a12622;
+  background: transparent;
+  font-size: 17px;
+  line-height: 1;
   vertical-align: middle;
+}
+
+.review-warning:hover,
+.review-warning:focus-visible {
+  background: #f7d9d5;
+  outline: 2px solid #c9423a;
+  outline-offset: -2px;
 }
 
 .icon-btn {
@@ -429,16 +672,99 @@ td input[data-field="contact"] {
 }
 
 @media (max-width: 1100px) {
-  .workspace,
-  .output-grid {
+  .workspace {
     grid-template-columns: 1fr;
+  }
+
+  .input-pane {
+    min-height: 390px;
   }
 }
 
 @media (max-width: 640px) {
+  body {
+    background: #fff;
+  }
+
   .app-shell {
-    width: min(100% - 16px, 1480px);
-    padding-top: 8px;
+    width: 100%;
+    padding: 0 0 18px;
+  }
+
+  .app-header {
+    min-height: 54px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .app-header h1 {
+    font-size: 18px;
+  }
+
+  .page-tabs {
+    margin-bottom: 8px;
+    padding: 0 8px;
+    box-shadow: 0 3px 10px rgba(38, 52, 64, 0.08);
+  }
+
+  .tab-btn {
+    min-width: 0;
+    flex: 1;
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .workspace,
+  .output-grid {
+    gap: 8px;
+  }
+
+  .output-grid {
+    grid-template-columns: 1fr;
+    margin-top: 8px;
+  }
+
+  .input-pane,
+  .edit-pane,
+  .output-pane,
+  .tracking-pane {
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .input-pane,
+  .output-pane {
+    min-height: 0;
+  }
+
+  .pane-head {
+    padding: 14px 12px 10px;
+  }
+
+  .pane-head.tight {
+    padding: 11px 12px;
+  }
+
+  .pane-head h1 {
+    font-size: 19px;
+  }
+
+  #rawInput {
+    min-height: 210px;
+    padding: 12px;
+  }
+
+  .source-controls,
+  .action-row {
+    padding-right: 12px;
+    padding-left: 12px;
   }
 
   .pane-head,
@@ -448,9 +774,66 @@ td input[data-field="contact"] {
     flex-wrap: wrap;
   }
 
+  .date-range label {
+    min-width: calc(50% - 5px);
+  }
+
   .primary-btn,
   .ghost-btn,
   .copy-btn {
     flex: 1 1 auto;
+  }
+
+  .action-row .primary-btn {
+    flex-basis: 100%;
+  }
+
+  .output-pane textarea {
+    min-height: 260px;
+  }
+
+  .ranking-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .weekly-stats-body {
+    padding: 0 12px 14px;
+  }
+
+  .section-head,
+  .tracking-controls,
+  .tracking-summary {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .tracking-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tracking-controls select {
+    width: 100%;
+    height: 44px;
+  }
+
+  .tracking-summary {
+    font-size: 16px;
+    line-height: 1.45;
+  }
+
+  .table-wrap,
+  .tracking-table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  td input,
+  td select {
+    height: 38px;
+  }
+
+  .app-footer {
+    padding: 16px 12px 0;
   }
 }

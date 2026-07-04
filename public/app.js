@@ -1,7 +1,10 @@
+const APP_VERSION = "V2.5.0";
+const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
+
 const NORTH_PLACES = [
   "北辦", "林長一科", "林長二科", "林長小兒", "台大", "北榮", "國桃", "敏盛", "亞東", "振興",
   "花慈", "竹北生醫", "陽大", "三總", "雙和", "北醫", "竹馬", "竹大", "淡馬", "萬芳",
-  "東馬", "北國", "大同", "北馬", "北慈", "林長", "輔大"
+  "東馬", "北國", "大同", "北馬", "北慈", "新慈", "林長", "基長", "輔大"
 ];
 
 const SOUTH_PLACES = [
@@ -15,6 +18,8 @@ const CARGO_CODES = [
   "EX1", "EX2", "EX3", "EX4", "E1", "E2", "E3", "E4",
   "ICE-H", "ICE-H2", "ICE-H-2", "ICE-H-3", "WMC-1", "WMC-2"
 ];
+
+const OFFICE_DESTINATIONS = new Set(["北辦", "中辦", "南辦", "高辦", "未辨識"]);
 
 const SAMPLE_TEXT = `7/1
 "北辦至高醫岡山送達0800
@@ -44,19 +49,34 @@ const instrumentSelect = document.getElementById("instrumentSelect");
 const trackingSummary = document.getElementById("trackingSummary");
 const trackingBody = document.getElementById("trackingBody");
 const trackingText = document.getElementById("trackingText");
+const weeklyStatsBody = document.getElementById("weeklyStatsBody");
 const rangeStartInput = document.getElementById("rangeStart");
 const rangeEndInput = document.getElementById("rangeEnd");
 const sheetImportBtn = document.getElementById("sheetImportBtn");
 const loginBtn = document.getElementById("loginBtn");
 const importStatus = document.getElementById("importStatus");
+const inputPane = document.querySelector(".input-pane");
+const toggleSourceBtn = document.getElementById("toggleSourceBtn");
 
+document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
+restoreAppState();
+
+toggleSourceBtn.addEventListener("click", () => {
+  const collapsed = inputPane.classList.toggle("source-collapsed");
+  toggleSourceBtn.setAttribute("aria-expanded", String(!collapsed));
+  toggleSourceBtn.querySelector("span").textContent = collapsed ? "展開" : "收合";
+});
 
 document.querySelectorAll(".tab-btn").forEach((button) => {
   button.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach((item) => item.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach((item) => {
+      item.classList.remove("active");
+      item.setAttribute("aria-selected", "false");
+    });
     document.querySelectorAll(".page-view").forEach((page) => page.classList.remove("active"));
     button.classList.add("active");
+    button.setAttribute("aria-selected", "true");
     document.getElementById(button.dataset.page).classList.add("active");
   });
 });
@@ -64,15 +84,23 @@ document.querySelectorAll(".tab-btn").forEach((button) => {
 document.getElementById("parseBtn").addEventListener("click", () => {
   importWarnings = [];
   schedules = parseInput(rawInput.value);
+  saveAppState();
   renderTable();
   renderOutputs();
   renderTracker();
 });
 
 document.getElementById("clearBtn").addEventListener("click", () => {
+  if (
+    (rawInput.value || schedules.length) &&
+    !window.confirm("確定要清空目前行程與瀏覽器保存內容？")
+  ) {
+    return;
+  }
   rawInput.value = "";
   schedules = [];
   importWarnings = [];
+  clearSavedState();
   renderTable();
   renderOutputs();
   renderTracker();
@@ -82,6 +110,7 @@ document.getElementById("loadSampleBtn").addEventListener("click", () => {
   rawInput.value = SAMPLE_TEXT;
   importWarnings = [];
   schedules = parseInput(rawInput.value);
+  saveAppState();
   renderTable();
   renderOutputs();
   renderTracker();
@@ -91,19 +120,27 @@ instrumentSelect.addEventListener("change", () => {
   renderTrackingResult();
 });
 
+rawInput.addEventListener("input", saveAppState);
+
 rangeStartInput.addEventListener("change", () => {
   updateDateRangeLimits();
+  saveAppState();
   renderOutputs();
+  renderWeeklyStatistics();
 });
 
 rangeEndInput.addEventListener("change", () => {
   updateDateRangeLimits();
+  saveAppState();
   renderOutputs();
+  renderWeeklyStatistics();
 });
 
 sheetImportBtn.addEventListener("click", () => {
   importFromGoogleSheet();
 });
+
+window.addEventListener("beforeunload", saveAppState);
 
 loginBtn.addEventListener("click", async () => {
   const identity = window.netlifyIdentity;
@@ -241,26 +278,27 @@ function parseRoute(line) {
   let clean = line.replace(/\s+/g, "").replace(/^"+|"+$/g, "");
   let action = "";
   const hasPickup = /取回/.test(clean);
+  const hasNextDayDelivery = /隔日送達/.test(clean);
   const hasDelivery = /送達|抵達|到達/.test(clean);
   const hasColonTime = /\d{1,2}:\d{2}/.test(clean);
   const standaloneNumericDestination = hasStandaloneNumericDestination(clean);
   const joinedNumericPlaceTime =
-    /至\d{3,}\d{1,2}:\d{2}(?:送達|抵達|到達|取回)/.test(clean) ||
-    /至\d{7,}(?:送達|抵達|到達|取回)/.test(clean);
+    /至\d{3,}\d{1,2}:\d{2}(?:隔日送達|送達|抵達|到達|取回)/.test(clean) ||
+    /至\d{7,}(?:隔日送達|送達|抵達|到達|取回)/.test(clean);
 
   if (hasPickup) action = "取回";
-  if (hasDelivery) action = "送達";
+  if (hasDelivery) action = hasNextDayDelivery ? "隔日送達" : "送達";
 
   const time = standaloneNumericDestination ? "" : extractTime(clean);
   clean = clean.replace(/\d{1,2}:\d{2}/g, "");
   if (!hasColonTime && !standaloneNumericDestination) {
     clean = clean
-      .replace(/(送達|抵達|到達|取回)(\d{3,4})/g, "$1")
-      .replace(/(\d{3,4})(送達|抵達|到達|取回)/g, "$2");
+      .replace(/(隔日送達|送達|抵達|到達|取回)(\d{3,4})/g, "$1")
+      .replace(/(\d{3,4})(隔日送達|送達|抵達|到達|取回)/g, "$2");
   }
   clean = clean
     .replace(/備取\d*:?[^至送取抵到]*/g, "")
-    .replace(/送達|抵達|到達|取回/g, "");
+    .replace(/隔日送達|送達|抵達|到達|取回/g, "");
 
   const separatorIndex = clean.indexOf("至");
   const from = separatorIndex >= 0 ? clean.slice(0, separatorIndex) : clean;
@@ -278,7 +316,7 @@ function parseRoute(line) {
 function hasStandaloneNumericDestination(line) {
   const numericPlaces = [...NORTH_PLACES, ...SOUTH_PLACES].filter((place) => /^\d+$/.test(place));
   return numericPlaces.some((place) =>
-    new RegExp(`至${place}(?:送達|抵達|到達|取回)$`).test(line)
+    new RegExp(`至${place}(?:隔日送達|送達|抵達|到達|取回)$`).test(line)
   );
 }
 
@@ -286,7 +324,7 @@ function extractTime(line) {
   const colon = line.match(/(\d{1,2}):(\d{2})/);
   if (colon) return `${colon[1].padStart(2, "0")}:${colon[2]}`;
 
-  const compact = line.match(/(?:送達|抵達|到達|取回)(\d{3,4})|(\d{3,4})(?:送達|抵達|到達|取回)/);
+  const compact = line.match(/(?:隔日送達|送達|抵達|到達|取回)(\d{3,4})|(\d{3,4})(?:隔日送達|送達|抵達|到達|取回)/);
   if (!compact) return "";
   const digits = (compact[1] || compact[2]).padStart(4, "0");
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
@@ -364,6 +402,7 @@ function placeMatchesList(value, places) {
 }
 
 function scheduleNeedsReview(schedule) {
+  if (schedule.warningAcknowledged) return false;
   return Boolean(schedule.parseWarning) ||
     classifyRegion(schedule.from) === "unknown" ||
     classifyRegion(schedule.to) === "unknown";
@@ -394,16 +433,29 @@ function renderTable() {
     if (scheduleNeedsReview(schedule)) {
       row.classList.add("needs-review");
       row.title = "醫院無法辨識，或數字院所與時間相連，請人工確認";
-      const warning = document.createElement("span");
+      const warning = document.createElement("button");
+      warning.type = "button";
       warning.className = "review-warning";
       warning.textContent = "❗️";
-      warning.title = "請人工確認此筆行程";
+      warning.title = "完成編輯並取消警告";
+      warning.setAttribute("aria-label", "完成編輯並取消警告");
+      warning.addEventListener("click", () => {
+        schedules[index].warningAcknowledged = true;
+        schedules[index].parseWarning = false;
+        saveAppState();
+        renderTable();
+        renderOutputs();
+        renderTracker({ keepSelection: true });
+      });
       row.querySelector("[data-remove]").parentElement.prepend(warning);
     }
     row.querySelectorAll("[data-field]").forEach((field) => {
       field.value = schedule[field.dataset.field] || "";
       field.addEventListener("input", () => {
         schedules[index][field.dataset.field] = field.value;
+        if (field.dataset.field === "from" || field.dataset.field === "to") {
+          schedules[index].warningAcknowledged = false;
+        }
         if (field.dataset.field === "contact" && !schedules[index].phone) {
           const matchedPhone = findPhoneForContact(field.value);
           if (matchedPhone) {
@@ -411,12 +463,14 @@ function renderTable() {
             row.querySelector('[data-field="phone"]').value = matchedPhone;
           }
         }
+        saveAppState();
         renderOutputs();
         renderTracker({ keepSelection: true });
       });
       if (field.dataset.field === "from" || field.dataset.field === "to") {
         field.addEventListener("change", () => {
           schedules[index].region = classifyRouteRegion(schedules[index].from, schedules[index].to);
+          saveAppState();
           renderTable();
           renderOutputs();
           renderTracker({ keepSelection: true });
@@ -425,6 +479,7 @@ function renderTable() {
     });
     row.querySelector("[data-remove]").addEventListener("click", () => {
       schedules.splice(index, 1);
+      saveAppState();
       renderTable();
       renderOutputs();
       renderTracker({ keepSelection: true });
@@ -514,18 +569,43 @@ function compareDate(a, b) {
 }
 
 function parseScheduleDate(date) {
+  const resolved = resolveScheduleDate(date);
+  return resolved ? resolved.getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function resolveScheduleDate(date) {
   const match = String(date || "").match(/^(\d{1,2})\/(\d{1,2})$/);
-  if (!match) return Number.MAX_SAFE_INTEGER;
+  if (!match) return null;
   const range = getSelectedDateRange();
-  if (!range) return Number(match[1]) * 100 + Number(match[2]);
+  if (!range) return null;
 
   const month = Number(match[1]);
   const day = Number(match[2]);
   const candidateYears = [range.start.getFullYear() - 1, range.start.getFullYear(), range.start.getFullYear() + 1];
-  const matchedDate = candidateYears
-    .map((year) => new Date(year, month - 1, day))
-    .find((candidate) => candidate >= range.start && candidate <= range.end);
-  return matchedDate ? matchedDate.getTime() : Number.MAX_SAFE_INTEGER;
+  return candidateYears
+    .map((year) => createValidLocalDate(year, month, day))
+    .filter(Boolean)
+    .find((candidate) => candidate >= range.start && candidate <= range.end) || null;
+}
+
+function createValidLocalDate(year, month, day) {
+  const date = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function formatDateWithWeekday(date) {
+  const resolved = resolveScheduleDate(date);
+  if (!resolved) return date;
+  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+  return `${date} ${weekdays[resolved.getDay()]}`;
 }
 
 function setDefaultDateRange() {
@@ -548,7 +628,7 @@ function formatDateInput(date) {
 function parseDateInput(value) {
   const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return createValidLocalDate(Number(match[1]), Number(match[2]), Number(match[3]));
 }
 
 function updateDateRangeLimits() {
@@ -583,8 +663,8 @@ function getSchedulesForSelectedRange() {
     const day = Number(match[2]);
     const candidateYears = [range.start.getFullYear() - 1, range.start.getFullYear(), range.start.getFullYear() + 1];
     return candidateYears.some((year) => {
-      const candidate = new Date(year, month - 1, day);
-      return candidate >= range.start && candidate <= range.end;
+      const candidate = createValidLocalDate(year, month, day);
+      return candidate && candidate >= range.start && candidate <= range.end;
     });
   });
 }
@@ -636,6 +716,7 @@ async function importFromGoogleSheet() {
     importWarnings = Array.isArray(data.warnings) ? data.warnings : [];
     rawInput.value = recordsToRawText(data.records || []);
     schedules = parseInput(rawInput.value);
+    saveAppState();
     renderTable();
     renderOutputs();
     renderTracker();
@@ -670,6 +751,44 @@ function recordsToRawText(records) {
   return lines.join("\n");
 }
 
+function saveAppState() {
+  try {
+    localStorage.setItem(APP_STORAGE_KEY, JSON.stringify({
+      rawInput: rawInput.value,
+      schedules,
+      importWarnings,
+      rangeStart: rangeStartInput.value,
+      rangeEnd: rangeEndInput.value
+    }));
+  } catch {
+    // The app remains usable when browser storage is unavailable.
+  }
+}
+
+function restoreAppState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(APP_STORAGE_KEY) || "null");
+    if (!saved || !Array.isArray(saved.schedules)) return;
+
+    rawInput.value = String(saved.rawInput || "");
+    schedules = saved.schedules;
+    importWarnings = Array.isArray(saved.importWarnings) ? saved.importWarnings : [];
+    if (saved.rangeStart) rangeStartInput.value = saved.rangeStart;
+    if (saved.rangeEnd) rangeEndInput.value = saved.rangeEnd;
+    updateDateRangeLimits();
+  } catch {
+    clearSavedState();
+  }
+}
+
+function clearSavedState() {
+  try {
+    localStorage.removeItem(APP_STORAGE_KEY);
+  } catch {
+    // Clearing the current screen still succeeds when storage is unavailable.
+  }
+}
+
 function setImportStatus(message, isError = false) {
   importStatus.textContent = message;
   importStatus.classList.toggle("error", isError);
@@ -700,6 +819,7 @@ function initializeNetlifyIdentity() {
 }
 
 function renderTracker(options = {}) {
+  renderWeeklyStatistics();
   const previousSelection = options.keepSelection ? instrumentSelect.value : "";
   const instruments = getAvailableInstruments();
   instrumentSelect.innerHTML = "";
@@ -726,6 +846,151 @@ function renderTracker(options = {}) {
   renderTrackingResult();
 }
 
+function renderWeeklyStatistics() {
+  weeklyStatsBody.innerHTML = "";
+  const weeklyData = buildWeeklyBorrowingStatistics();
+
+  if (!weeklyData.length) {
+    const empty = document.createElement("p");
+    empty.className = "statistics-empty";
+    empty.textContent = "目前沒有送達借用紀錄。";
+    weeklyStatsBody.appendChild(empty);
+    return;
+  }
+
+  weeklyData.forEach((week) => {
+    const section = document.createElement("section");
+    section.className = "week-stat-block";
+
+    const heading = document.createElement("h3");
+    heading.textContent = formatWeekRange(week.start, week.end);
+    section.appendChild(heading);
+
+    const grid = document.createElement("div");
+    grid.className = "ranking-grid";
+    grid.appendChild(createRankingPanel("借用儀器前五名", week.instrumentCounts));
+    grid.appendChild(createRankingPanel("醫院借用次數前五名", week.hospitalCounts));
+    section.appendChild(grid);
+    weeklyStatsBody.appendChild(section);
+  });
+}
+
+function buildWeeklyBorrowingStatistics() {
+  const weeks = new Map();
+
+  schedules.forEach((schedule) => {
+    if (!isBorrowingSchedule(schedule)) return;
+    const date = resolveScheduleDateForStatistics(schedule.date);
+    const instruments = [...new Set(splitInstruments(schedule.instruments))];
+    if (!date || !instruments.length || !schedule.to) return;
+
+    const start = getMonday(date);
+    const key = formatDateInput(start);
+    if (!weeks.has(key)) {
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      weeks.set(key, {
+        start,
+        end,
+        instrumentCounts: new Map(),
+        hospitalCounts: new Map()
+      });
+    }
+
+    const week = weeks.get(key);
+    instruments.forEach((instrument) => {
+      incrementCount(week.instrumentCounts, instrument);
+      incrementCount(week.hospitalCounts, schedule.to);
+    });
+  });
+
+  return [...weeks.values()].sort((a, b) => a.start - b.start);
+}
+
+function resolveScheduleDateForStatistics(date) {
+  const resolved = resolveScheduleDate(date);
+  if (resolved) return resolved;
+
+  const match = String(date || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+  const range = getSelectedDateRange();
+  if (!match || !range) return null;
+
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  return [range.start.getFullYear() - 1, range.start.getFullYear(), range.start.getFullYear() + 1]
+    .map((year) => createValidLocalDate(year, month, day))
+    .filter(Boolean)
+    .sort((a, b) => Math.abs(a - range.start) - Math.abs(b - range.start))[0];
+}
+
+function isBorrowingSchedule(schedule) {
+  return (
+    (schedule.action === "送達" || schedule.action === "隔日送達") &&
+    Boolean(schedule.to) &&
+    !OFFICE_DESTINATIONS.has(schedule.to)
+  );
+}
+
+function getMonday(date) {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const daysSinceMonday = (monday.getDay() + 6) % 7;
+  monday.setDate(monday.getDate() - daysSinceMonday);
+  return monday;
+}
+
+function incrementCount(counts, key) {
+  counts.set(key, (counts.get(key) || 0) + 1);
+}
+
+function createRankingPanel(title, counts) {
+  const panel = document.createElement("section");
+  panel.className = "ranking-panel";
+
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  panel.appendChild(heading);
+
+  const list = document.createElement("ol");
+  list.className = "ranking-list";
+  const ranking = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))
+    .slice(0, 5);
+  const highestCount = ranking[0]?.[1] || 1;
+
+  ranking.forEach(([name, count]) => {
+    const item = document.createElement("li");
+    item.style.setProperty("--ranking-width", `${Math.max(12, (count / highestCount) * 100)}%`);
+    const label = document.createElement("span");
+    label.textContent = name;
+    const total = document.createElement("strong");
+    total.textContent = `${count}次`;
+    item.append(label, total);
+    list.appendChild(item);
+  });
+
+  if (!ranking.length) {
+    const item = document.createElement("li");
+    item.className = "ranking-empty";
+    item.textContent = "無資料";
+    list.appendChild(item);
+  }
+
+  panel.appendChild(list);
+  return panel;
+}
+
+function formatMonthDayFromDate(date) {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function formatWeekRange(start, end) {
+  const startLabel = `${start.getFullYear()}/${formatMonthDayFromDate(start)}`;
+  const endLabel = start.getFullYear() === end.getFullYear()
+    ? formatMonthDayFromDate(end)
+    : `${end.getFullYear()}/${formatMonthDayFromDate(end)}`;
+  return `${startLabel}－${endLabel}`;
+}
+
 function getAvailableInstruments() {
   const seen = new Set();
   schedules.forEach((schedule) => {
@@ -746,7 +1011,7 @@ function renderTrackingResult() {
   trackingBody.innerHTML = "";
 
   if (!selected) {
-    trackingSummary.textContent = "調度次數：0次";
+    trackingSummary.textContent = "調度次數：0次｜借用次數：0次";
     trackingText.value = "";
     trackingBody.innerHTML = '<tr class="empty-row"><td colspan="6">請先在第一頁貼上資料並產生行程。</td></tr>';
     return;
@@ -757,7 +1022,8 @@ function renderTrackingResult() {
     .slice()
     .sort(compareSchedulesForTracking);
 
-  trackingSummary.textContent = `調度次數：${routes.length}次`;
+  const borrowingCount = routes.filter(isBorrowingSchedule).length;
+  trackingSummary.textContent = `調度次數：${routes.length}次｜借用次數：${borrowingCount}次`;
 
   if (!routes.length) {
     trackingText.value = "";
@@ -804,7 +1070,13 @@ function compareSchedulesForTracking(a, b) {
 }
 
 function buildTrackingText(instrument, routes) {
-  const lines = [`${instrument} 路徑追蹤`, `調度次數：${routes.length}次`, ""];
+  const borrowingCount = routes.filter(isBorrowingSchedule).length;
+  const lines = [
+    `${instrument} 路徑追蹤`,
+    `調度次數：${routes.length}次`,
+    `借用次數：${borrowingCount}次`,
+    ""
+  ];
   routes.forEach((route) => {
     const details = [route.action, route.time, route.contact || "業務"].filter(Boolean).join(" ");
     lines.push(`${scheduleNeedsReview(route) ? "❗️ " : ""}${route.from} 至 ${route.to}${details ? `  ${details}` : ""}`);
@@ -864,7 +1136,7 @@ function appendGrouped(lines, items) {
 
   [...grouped.entries()].forEach(([date, entries], dateIndex) => {
     if (dateIndex > 0) lines.push("");
-    lines.push(`<<${date}>>`);
+    lines.push(`<<${formatDateWithWeekday(date)}>>`);
     entries.forEach((item, index) => {
       if (index > 0) lines.push("");
       lines.push(formatSchedule(item));
