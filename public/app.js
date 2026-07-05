@@ -1,10 +1,9 @@
-const APP_VERSION = "V2.6.3";
+const APP_VERSION = "V2.7.0";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const RELEASE_NOTES = [
-  "取回時間顯示於起點，送達時間顯示於終點。",
-  "行程編輯清空聯絡人時，同一列電話會一併清除。",
-  "調整手動貼上與試算表匯入按鈕位置，操作流程更清楚。"
+  "Line 訊息新增傳統格式與新版格式切換。",
+  "預設優先顯示傳統格式，並保留使用者上次選擇。"
 ];
 
 const NORTH_PLACES = [
@@ -68,6 +67,7 @@ const releaseVersion = document.getElementById("releaseVersion");
 const releaseNotesList = document.getElementById("releaseNotesList");
 const releaseConfirmBtn = document.getElementById("releaseConfirmBtn");
 const releaseCloseBtn = document.getElementById("releaseCloseBtn");
+const messageFormatSelect = document.getElementById("messageFormatSelect");
 
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
@@ -77,6 +77,10 @@ showReleaseNotesOnce();
 releaseConfirmBtn.addEventListener("click", closeReleaseNotes);
 releaseCloseBtn.addEventListener("click", closeReleaseNotes);
 releaseDialog.addEventListener("close", markReleaseSeen);
+messageFormatSelect.addEventListener("change", () => {
+  saveAppState();
+  renderOutputs();
+});
 
 toggleSourceBtn.addEventListener("click", () => {
   const collapsed = inputPane.classList.toggle("source-collapsed");
@@ -820,7 +824,8 @@ function saveAppState() {
       schedules,
       importWarnings,
       rangeStart: rangeStartInput.value,
-      rangeEnd: rangeEndInput.value
+      rangeEnd: rangeEndInput.value,
+      messageFormat: messageFormatSelect.value
     }));
   } catch {
     // The app remains usable when browser storage is unavailable.
@@ -837,6 +842,9 @@ function restoreAppState() {
     importWarnings = Array.isArray(saved.importWarnings) ? saved.importWarnings : [];
     if (saved.rangeStart) rangeStartInput.value = saved.rangeStart;
     if (saved.rangeEnd) rangeEndInput.value = saved.rangeEnd;
+    if (saved.messageFormat === "traditional" || saved.messageFormat === "modern") {
+      messageFormatSelect.value = saved.messageFormat;
+    }
     updateDateRangeLimits();
   } catch {
     clearSavedState();
@@ -1198,7 +1206,10 @@ function appendGrouped(lines, items) {
 
   [...grouped.entries()].forEach(([date, entries], dateIndex) => {
     if (dateIndex > 0) lines.push("");
-    lines.push(`<<${formatDateWithWeekday(date)}>>`);
+    const dateLabel = messageFormatSelect.value === "traditional"
+      ? formatTraditionalDateWithWeekday(date)
+      : formatDateWithWeekday(date);
+    lines.push(`<<${dateLabel}>>`);
     entries.forEach((item, index) => {
       if (index > 0) lines.push("");
       lines.push(formatSchedule(item));
@@ -1207,6 +1218,25 @@ function appendGrouped(lines, items) {
 }
 
 function formatSchedule(item) {
+  if (messageFormatSelect.value === "traditional") {
+    return formatTraditionalSchedule(item);
+  }
+  return formatModernSchedule(item);
+}
+
+function formatTraditionalSchedule(item) {
+  const suffix = formatTraditionalTimeAction(item);
+  const warning = scheduleNeedsReview(item) ? "❗️ " : "";
+  const contact = item.contact || "業務";
+  const contactLine = `聯絡人_${contact}${item.phone ? `_${item.phone}` : ""}`;
+  return [
+    `${warning}${item.from} 至 ${item.to}${suffix}`,
+    contactLine,
+    `儀器_${item.instruments || "未填"}`
+  ].join("\n");
+}
+
+function formatModernSchedule(item) {
   const suffix = formatTimeAction(item);
   const warning = scheduleNeedsReview(item) ? "❗️ " : "";
   const route = item.action === "取回"
@@ -1219,6 +1249,18 @@ function formatSchedule(item) {
   if (item.phone) lines.push(`📞 電話：${item.phone}`);
   lines.push(`📦 儀器：${item.instruments || "未填"}`);
   return lines.join("\n");
+}
+
+function formatTraditionalDateWithWeekday(date) {
+  return formatDateWithWeekday(date).replace(/\s+/g, "");
+}
+
+function formatTraditionalTimeAction(item) {
+  const time = String(item.time || "").replace(/:/g, "");
+  if (!time && !item.action) return "";
+  if (time && item.action) return `（${time}${item.action}）`;
+  if (time) return `（${time}）`;
+  return `（${item.action}）`;
 }
 
 function formatTimeAction(item) {

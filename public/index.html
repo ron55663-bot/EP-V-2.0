@@ -97,28 +97,37 @@
       </div>
     </section>
 
-    <section class="output-grid">
-      <article class="output-pane">
-        <div class="pane-head tight">
-          <div>
-            <h2>北區訊息</h2>
-            <p>可直接複製貼到 Line。</p>
+    <section class="output-section">
+      <div class="output-toolbar">
+        <label for="messageFormatSelect">Line 訊息格式</label>
+        <select id="messageFormatSelect">
+          <option value="traditional">傳統格式</option>
+          <option value="modern">新版格式</option>
+        </select>
+      </div>
+      <div class="output-grid">
+        <article class="output-pane">
+          <div class="pane-head tight">
+            <div>
+              <h2>北區訊息</h2>
+              <p>可直接複製貼到 Line。</p>
+            </div>
+            <button class="copy-btn" type="button" data-target="northOutput">複製</button>
           </div>
-          <button class="copy-btn" type="button" data-target="northOutput">複製</button>
-        </div>
-        <textarea id="northOutput" readonly></textarea>
-      </article>
+          <textarea id="northOutput" readonly></textarea>
+        </article>
 
-      <article class="output-pane">
-        <div class="pane-head tight">
-          <div>
-            <h2>中南區訊息</h2>
-            <p>可直接複製貼到 Line。</p>
+        <article class="output-pane">
+          <div class="pane-head tight">
+            <div>
+              <h2>中南區訊息</h2>
+              <p>可直接複製貼到 Line。</p>
+            </div>
+            <button class="copy-btn" type="button" data-target="southOutput">複製</button>
           </div>
-          <button class="copy-btn" type="button" data-target="southOutput">複製</button>
-        </div>
-        <textarea id="southOutput" readonly></textarea>
-      </article>
+          <textarea id="southOutput" readonly></textarea>
+        </article>
+      </div>
     </section>
     </section>
 

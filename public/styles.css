@@ -225,7 +225,39 @@ button:disabled {
 
 .output-grid {
   grid-template-columns: 1fr 1fr;
+  margin-top: 8px;
+}
+
+.output-section {
   margin-top: 14px;
+}
+
+.output-toolbar {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.output-toolbar label {
+  color: #394650;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.output-toolbar select {
+  width: 160px;
+  height: 36px;
+  border: 1px solid #cbd4ce;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
 }
 
 .input-pane,
@@ -804,6 +836,23 @@ td input[data-field="contact"] {
   .output-grid {
     grid-template-columns: 1fr;
     margin-top: 8px;
+  }
+
+  .output-section {
+    margin-top: 8px;
+  }
+
+  .output-toolbar {
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .output-toolbar select {
+    min-width: 0;
+    flex: 1;
+    height: 42px;
   }
 
   .input-pane,
