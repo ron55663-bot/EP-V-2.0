@@ -1,5 +1,11 @@
-const APP_VERSION = "V2.5.1";
+const APP_VERSION = "V2.6.3";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
+const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
+const RELEASE_NOTES = [
+  "取回時間顯示於起點，送達時間顯示於終點。",
+  "行程編輯清空聯絡人時，同一列電話會一併清除。",
+  "調整手動貼上與試算表匯入按鈕位置，操作流程更清楚。"
+];
 
 const NORTH_PLACES = [
   "北辦", "林長一科", "林長二科", "林長小兒", "台大", "北榮", "國桃", "敏盛", "亞東", "振興",
@@ -57,16 +63,65 @@ const loginBtn = document.getElementById("loginBtn");
 const importStatus = document.getElementById("importStatus");
 const inputPane = document.querySelector(".input-pane");
 const toggleSourceBtn = document.getElementById("toggleSourceBtn");
+const releaseDialog = document.getElementById("releaseDialog");
+const releaseVersion = document.getElementById("releaseVersion");
+const releaseNotesList = document.getElementById("releaseNotesList");
+const releaseConfirmBtn = document.getElementById("releaseConfirmBtn");
+const releaseCloseBtn = document.getElementById("releaseCloseBtn");
 
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
 restoreAppState();
+showReleaseNotesOnce();
+
+releaseConfirmBtn.addEventListener("click", closeReleaseNotes);
+releaseCloseBtn.addEventListener("click", closeReleaseNotes);
+releaseDialog.addEventListener("close", markReleaseSeen);
 
 toggleSourceBtn.addEventListener("click", () => {
   const collapsed = inputPane.classList.toggle("source-collapsed");
   toggleSourceBtn.setAttribute("aria-expanded", String(!collapsed));
   toggleSourceBtn.querySelector("span").textContent = collapsed ? "展開" : "收合";
 });
+
+function showReleaseNotesOnce() {
+  try {
+    if (localStorage.getItem(RELEASE_STORAGE_KEY) === APP_VERSION) return;
+  } catch {
+    // Show the notice when browser storage is unavailable.
+  }
+
+  releaseVersion.textContent = APP_VERSION;
+  releaseNotesList.innerHTML = "";
+  RELEASE_NOTES.forEach((note) => {
+    const item = document.createElement("li");
+    item.textContent = note;
+    releaseNotesList.appendChild(item);
+  });
+
+  if (typeof releaseDialog.showModal === "function") {
+    releaseDialog.showModal();
+  } else {
+    releaseDialog.setAttribute("open", "");
+  }
+}
+
+function closeReleaseNotes() {
+  if (typeof releaseDialog.close === "function") {
+    releaseDialog.close();
+    return;
+  }
+  releaseDialog.removeAttribute("open");
+  markReleaseSeen();
+}
+
+function markReleaseSeen() {
+  try {
+    localStorage.setItem(RELEASE_STORAGE_KEY, APP_VERSION);
+  } catch {
+    // The notice may reappear when browser storage is unavailable.
+  }
+}
 
 document.querySelectorAll(".tab-btn").forEach((button) => {
   button.addEventListener("click", () => {
@@ -384,6 +439,16 @@ function findPhoneForContact(name) {
   return directory.get(target) || "";
 }
 
+function syncContactPhone(schedule, contactValue) {
+  schedule.contactEntries = [];
+  if (!contactValue.trim()) {
+    schedule.phone = "";
+  } else if (!schedule.phone) {
+    schedule.phone = findPhoneForContact(contactValue);
+  }
+  return schedule.phone || "";
+}
+
 function classifyRegion(from) {
   if (placeMatchesList(from, SOUTH_PLACES)) return "south";
   if (placeMatchesList(from, NORTH_PLACES)) return "north";
@@ -456,12 +521,9 @@ function renderTable() {
         if (field.dataset.field === "from" || field.dataset.field === "to") {
           schedules[index].warningAcknowledged = false;
         }
-        if (field.dataset.field === "contact" && !schedules[index].phone) {
-          const matchedPhone = findPhoneForContact(field.value);
-          if (matchedPhone) {
-            schedules[index].phone = matchedPhone;
-            row.querySelector('[data-field="phone"]').value = matchedPhone;
-          }
+        if (field.dataset.field === "contact") {
+          const phoneField = row.querySelector('[data-field="phone"]');
+          phoneField.value = syncContactPhone(schedules[index], field.value);
         }
         saveAppState();
         renderOutputs();
@@ -1147,8 +1209,11 @@ function appendGrouped(lines, items) {
 function formatSchedule(item) {
   const suffix = formatTimeAction(item);
   const warning = scheduleNeedsReview(item) ? "❗️ " : "";
+  const route = item.action === "取回"
+    ? `${item.from}${suffix} 至 ${item.to}`
+    : `${item.from} 至 ${item.to}${suffix}`;
   const lines = [
-    `${warning}📍 ${item.from} 至 ${item.to}${suffix}`,
+    `${warning}📍 ${route}`,
     `👤 聯絡人：${item.contact || "業務"}`
   ];
   if (item.phone) lines.push(`📞 電話：${item.phone}`);

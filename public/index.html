@@ -42,6 +42,11 @@
         </div>
         <div id="sourceContent" class="source-content">
           <textarea id="rawInput" spellcheck="false" placeholder="請貼上 PDF 內同格式的行程資料，例如：&#10;7/1&#10;&quot;北辦至高醫岡山送達0800&#10;聯絡人_業務&#10;儀器_WMC-2&quot;"></textarea>
+          <div class="action-row">
+            <button id="parseBtn" type="button" class="primary-btn">產生訊息</button>
+            <button id="loadSampleBtn" type="button" class="ghost-btn">載入範例</button>
+            <button id="clearBtn" type="button" class="text-btn">清空欄位</button>
+          </div>
           <div class="source-controls">
             <div class="date-range">
               <label for="rangeStart">開始日期
@@ -56,11 +61,6 @@
               <button id="loginBtn" type="button" class="ghost-btn">使用 Google 登入</button>
             </div>
             <p id="importStatus" class="import-status" aria-live="polite"></p>
-          </div>
-          <div class="action-row">
-            <button id="parseBtn" type="button" class="primary-btn">產生訊息</button>
-            <button id="loadSampleBtn" type="button" class="ghost-btn">載入範例</button>
-            <button id="clearBtn" type="button" class="text-btn">清空</button>
           </div>
         </div>
       </div>
@@ -168,6 +168,23 @@
     </section>
     <footer class="app-footer">Designed by Ron, with assistance from Billy. <span id="appVersion"></span></footer>
   </main>
+
+  <dialog id="releaseDialog" class="release-dialog" aria-labelledby="releaseTitle">
+    <div class="release-head">
+      <div>
+        <p class="release-kicker">VERSION UPDATE</p>
+        <h2 id="releaseTitle">版本更新</h2>
+      </div>
+      <button id="releaseCloseBtn" type="button" class="dialog-close-btn" aria-label="關閉">×</button>
+    </div>
+    <div class="release-body">
+      <p id="releaseVersion" class="release-version"></p>
+      <ul id="releaseNotesList" class="release-notes-list"></ul>
+    </div>
+    <div class="release-actions">
+      <button id="releaseConfirmBtn" type="button" class="primary-btn">我知道了</button>
+    </div>
+  </dialog>
 
   <template id="rowTemplate">
     <tr>

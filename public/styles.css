@@ -135,6 +135,83 @@ button:disabled {
   font-weight: 700;
 }
 
+.release-dialog {
+  width: min(480px, calc(100% - 28px));
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0;
+  color: var(--ink);
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(31, 41, 51, 0.28);
+}
+
+.release-dialog::backdrop {
+  background: rgba(24, 34, 43, 0.62);
+}
+
+.release-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.release-kicker {
+  margin: 0 0 3px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dialog-close-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--soft);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dialog-close-btn:hover {
+  color: var(--ink);
+  background: #d9e9e7;
+}
+
+.release-body {
+  padding: 18px 20px;
+}
+
+.release-version {
+  margin: 0 0 12px;
+  color: var(--accent-strong);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.release-notes-list {
+  margin: 0;
+  padding-left: 22px;
+  color: #394650;
+  line-height: 1.65;
+}
+
+.release-notes-list li + li {
+  margin-top: 7px;
+}
+
+.release-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--line);
+}
+
 .workspace,
 .output-grid {
   display: grid;
@@ -835,5 +912,24 @@ td input[data-field="contact"] {
 
   .app-footer {
     padding: 16px 12px 0;
+  }
+
+  .release-dialog {
+    width: calc(100% - 20px);
+  }
+
+  .release-head,
+  .release-body {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .release-actions {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .release-actions .primary-btn {
+    width: 100%;
   }
 }
