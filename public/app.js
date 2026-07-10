@@ -1,9 +1,9 @@
-const APP_VERSION = "V2.7.0";
+const APP_VERSION = "V2.8.0";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const RELEASE_NOTES = [
-  "Line 訊息新增傳統格式與新版格式切換。",
-  "預設優先顯示傳統格式，並保留使用者上次選擇。"
+  "行程編輯新增全區、北區、中南區快速篩選。",
+  "運送新增公司物流自送，並於表格與 Line 訊息底部獨立集中顯示。"
 ];
 
 const NORTH_PLACES = [
@@ -68,6 +68,7 @@ const releaseNotesList = document.getElementById("releaseNotesList");
 const releaseConfirmBtn = document.getElementById("releaseConfirmBtn");
 const releaseCloseBtn = document.getElementById("releaseCloseBtn");
 const messageFormatSelect = document.getElementById("messageFormatSelect");
+const scheduleRegionFilter = document.getElementById("scheduleRegionFilter");
 
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
@@ -80,6 +81,11 @@ releaseDialog.addEventListener("close", markReleaseSeen);
 messageFormatSelect.addEventListener("change", () => {
   saveAppState();
   renderOutputs();
+});
+
+scheduleRegionFilter.addEventListener("change", () => {
+  saveAppState();
+  renderTable();
 });
 
 toggleSourceBtn.addEventListener("click", () => {
@@ -490,10 +496,24 @@ function renderTable() {
     return;
   }
 
+  const visibleIndexes = getVisibleScheduleIndexes();
+  if (!visibleIndexes.length) {
+    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="11">目前篩選範圍沒有行程。</td></tr>';
+    updateSummaryText(0);
+    return;
+  }
+
   let previousRegion = "";
-  getSortedScheduleIndexes().forEach((index) => {
+  let companyDividerShown = false;
+  visibleIndexes.forEach((index) => {
     const schedule = schedules[index];
-    if (schedule.region !== previousRegion) {
+    if (schedule.delivery === "company" && !companyDividerShown) {
+      scheduleBody.appendChild(createCompanyDeliveryDivider());
+      companyDividerShown = true;
+      previousRegion = "";
+    }
+
+    if (schedule.delivery !== "company" && schedule.region !== previousRegion) {
       scheduleBody.appendChild(createRegionDivider(schedule.region));
       previousRegion = schedule.region;
     }
@@ -542,6 +562,14 @@ function renderTable() {
           renderTracker({ keepSelection: true });
         });
       }
+      if (field.dataset.field === "delivery") {
+        field.addEventListener("change", () => {
+          saveAppState();
+          renderTable();
+          renderOutputs();
+          renderTracker({ keepSelection: true });
+        });
+      }
     });
     row.querySelector("[data-remove]").addEventListener("click", () => {
       schedules.splice(index, 1);
@@ -553,10 +581,17 @@ function renderTable() {
     scheduleBody.appendChild(row);
   });
 
+  updateSummaryText(visibleIndexes.length);
+}
+
+function updateSummaryText(visibleCount) {
   const northCount = schedules.filter((item) => item.region === "north").length;
   const southCount = schedules.filter((item) => item.region === "south").length;
+  const companyCount = schedules.filter((item) => item.delivery === "company").length;
   const reviewCount = schedules.filter(scheduleNeedsReview).length;
-  summaryText.textContent = `共 ${schedules.length} 筆，北區 ${northCount} 筆，中南區 ${southCount} 筆${reviewCount ? `，❗️待確認 ${reviewCount} 筆` : ""}；表格依日期與區域排序`;
+  const filterLabel = getScheduleFilterLabel();
+  const filterText = scheduleRegionFilter.value === "all" ? "" : `，目前顯示 ${filterLabel} ${visibleCount} 筆`;
+  summaryText.textContent = `共 ${schedules.length} 筆，北區 ${northCount} 筆，中南區 ${southCount} 筆，公司物流自送 ${companyCount} 筆${reviewCount ? `，❗️待確認 ${reviewCount} 筆` : ""}${filterText}；表格依日期與區域排序`;
 }
 
 function createRegionDivider(region) {
@@ -570,10 +605,29 @@ function createRegionDivider(region) {
   return row;
 }
 
+function createCompanyDeliveryDivider() {
+  const row = document.createElement("tr");
+  row.className = "region-divider company-divider";
+  const cell = document.createElement("td");
+  cell.colSpan = 11;
+  cell.textContent = "公司物流自送";
+  row.appendChild(cell);
+  return row;
+}
+
+function getVisibleScheduleIndexes() {
+  const filterValue = scheduleRegionFilter.value || "all";
+  return getSortedScheduleIndexes()
+    .filter((index) => filterValue === "all" || schedules[index].region === filterValue);
+}
+
 function getSortedScheduleIndexes() {
   return schedules
     .map((schedule, index) => ({ schedule, index }))
     .sort((a, b) => {
+      const deliveryGroupCompare = getDeliveryGroupSortValue(a.schedule.delivery) - getDeliveryGroupSortValue(b.schedule.delivery);
+      if (deliveryGroupCompare) return deliveryGroupCompare;
+
       const dateCompare = compareDate(a.schedule.date, b.schedule.date);
       if (dateCompare) return dateCompare;
 
@@ -609,6 +663,10 @@ function getSortedScheduleIndexes() {
     .map((item) => item.index);
 }
 
+function getDeliveryGroupSortValue(delivery) {
+  return delivery === "company" ? 1 : 0;
+}
+
 function getRegionSortValue(region) {
   if (region === "north") return 0;
   if (region === "south") return 1;
@@ -618,7 +676,14 @@ function getRegionSortValue(region) {
 function getDeliverySortValue(delivery) {
   if (delivery === "cargo") return 0;
   if (delivery === "self") return 1;
+  if (delivery === "company") return 2;
   return 2;
+}
+
+function getScheduleFilterLabel() {
+  if (scheduleRegionFilter.value === "north") return "北區";
+  if (scheduleRegionFilter.value === "south") return "中南區";
+  return "全區";
 }
 
 function compareText(a, b) {
@@ -825,7 +890,8 @@ function saveAppState() {
       importWarnings,
       rangeStart: rangeStartInput.value,
       rangeEnd: rangeEndInput.value,
-      messageFormat: messageFormatSelect.value
+      messageFormat: messageFormatSelect.value,
+      scheduleRegionFilter: scheduleRegionFilter.value
     }));
   } catch {
     // The app remains usable when browser storage is unavailable.
@@ -844,6 +910,9 @@ function restoreAppState() {
     if (saved.rangeEnd) rangeEndInput.value = saved.rangeEnd;
     if (saved.messageFormat === "traditional" || saved.messageFormat === "modern") {
       messageFormatSelect.value = saved.messageFormat;
+    }
+    if (saved.scheduleRegionFilter === "all" || saved.scheduleRegionFilter === "north" || saved.scheduleRegionFilter === "south") {
+      scheduleRegionFilter.value = saved.scheduleRegionFilter;
     }
     updateDateRangeLimits();
   } catch {
@@ -1162,6 +1231,7 @@ function buildMessage(region) {
   const cross = outputSchedules.filter((item) => item.region !== region && item.region !== "unknown" && isCrossRegionReminder(item, region));
   const cargo = own.filter((item) => item.delivery === "cargo");
   const self = own.filter((item) => item.delivery === "self");
+  const company = own.filter((item) => item.delivery === "company");
   const lines = [title, `日期範圍：${formatSelectedRangeLabel()}`, "請各業務務必確認行程內容謝謝"];
 
   if (importWarnings.length) {
@@ -1183,6 +1253,8 @@ function buildMessage(region) {
   appendGrouped(lines, cargo);
   lines.push("", "================ 同仁自送");
   appendGrouped(lines, self);
+  lines.push("", "================ 公司物流自送");
+  appendGrouped(lines, company);
   return lines.join("\n").trim();
 }
 

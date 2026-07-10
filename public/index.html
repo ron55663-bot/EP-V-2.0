@@ -71,6 +71,14 @@
             <h2>行程編輯</h2>
             <p id="summaryText">尚未產生行程</p>
           </div>
+          <label class="schedule-filter" for="scheduleRegionFilter">
+            顯示範圍
+            <select id="scheduleRegionFilter">
+              <option value="all">全區</option>
+              <option value="north">北區</option>
+              <option value="south">中南區</option>
+            </select>
+          </label>
         </div>
         <div class="table-wrap">
           <table>
@@ -212,6 +220,7 @@
         <select data-field="delivery">
           <option value="cargo">物流貨運</option>
           <option value="self">同仁自送</option>
+          <option value="company">公司物流自送</option>
         </select>
       </td>
       <td>

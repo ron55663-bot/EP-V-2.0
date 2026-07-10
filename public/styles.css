@@ -260,6 +260,20 @@ button:disabled {
   background: #fff;
 }
 
+.schedule-filter {
+  display: grid;
+  gap: 5px;
+  min-width: 148px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.schedule-filter select {
+  min-height: 36px;
+  background-color: #fff;
+}
+
 .input-pane,
 .edit-pane,
 .output-pane,
@@ -738,6 +752,10 @@ td input[data-field="contact"] {
 
 .unknown-divider td {
   background: #a12622;
+}
+
+.company-divider td {
+  background: #2f3f4f;
 }
 
 .needs-review td {
