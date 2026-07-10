@@ -1,9 +1,10 @@
-const APP_VERSION = "V2.8.0";
+const APP_VERSION = "V2.9.0";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
+const SHARE_HASH_PREFIX = "#share=";
 const RELEASE_NOTES = [
-  "行程編輯新增全區、北區、中南區快速篩選。",
-  "運送新增公司物流自送，並於表格與 Line 訊息底部獨立集中顯示。"
+  "新增分享目前編輯，可在 iPhone 直接分享到 LINE。",
+  "同事開啟分享連結後，可看到已編輯完成的行程並接續修改。"
 ];
 
 const NORTH_PLACES = [
@@ -69,10 +70,12 @@ const releaseConfirmBtn = document.getElementById("releaseConfirmBtn");
 const releaseCloseBtn = document.getElementById("releaseCloseBtn");
 const messageFormatSelect = document.getElementById("messageFormatSelect");
 const scheduleRegionFilter = document.getElementById("scheduleRegionFilter");
+const shareEditBtn = document.getElementById("shareEditBtn");
+const shareStatus = document.getElementById("shareStatus");
 
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
-restoreAppState();
+if (!loadSharedStateFromUrl()) restoreAppState();
 showReleaseNotesOnce();
 
 releaseConfirmBtn.addEventListener("click", closeReleaseNotes);
@@ -87,6 +90,8 @@ scheduleRegionFilter.addEventListener("change", () => {
   saveAppState();
   renderTable();
 });
+
+shareEditBtn.addEventListener("click", shareCurrentEdit);
 
 toggleSourceBtn.addEventListener("click", () => {
   const collapsed = inputPane.classList.toggle("source-collapsed");
@@ -926,6 +931,136 @@ function clearSavedState() {
   } catch {
     // Clearing the current screen still succeeds when storage is unavailable.
   }
+}
+
+async function shareCurrentEdit() {
+  if (!schedules.length) {
+    setShareStatus("目前沒有可分享的行程。", true);
+    return;
+  }
+  if (!window.confirm("分享連結會包含目前行程與電話資料，請只傳給可信任同事。")) return;
+
+  saveAppState();
+  const shareUrl = buildShareUrl();
+  const shareData = {
+    title: "儀器排程編輯",
+    text: "請開啟此連結查看並接續編輯行程。",
+    url: shareUrl
+  };
+
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+      await navigator.share(shareData);
+      setShareStatus("已開啟分享選單，可選擇 LINE 傳給同事。");
+      return;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      setShareStatus("已取消分享。");
+      return;
+    }
+  }
+
+  const copied = await copyTextToClipboard(shareUrl);
+  setShareStatus(
+    copied ? "已複製分享連結，同事開啟後可查看並接續編輯。" : "無法自動複製，請手動複製網址列的分享連結。",
+    !copied
+  );
+}
+
+function buildShareUrl() {
+  const payload = {
+    version: APP_VERSION,
+    rawInput: rawInput.value,
+    schedules,
+    importWarnings,
+    rangeStart: rangeStartInput.value,
+    rangeEnd: rangeEndInput.value,
+    messageFormat: messageFormatSelect.value,
+    scheduleRegionFilter: scheduleRegionFilter.value
+  };
+  const baseUrl = `${location.origin}${location.pathname}${location.search}`;
+  return `${baseUrl}${SHARE_HASH_PREFIX}${encodeSharePayload(payload)}`;
+}
+
+function loadSharedStateFromUrl() {
+  if (!location.hash.startsWith(SHARE_HASH_PREFIX)) return false;
+
+  try {
+    const shared = decodeSharePayload(location.hash.slice(SHARE_HASH_PREFIX.length));
+    if (!shared || !Array.isArray(shared.schedules)) throw new Error("Invalid shared data");
+
+    rawInput.value = String(shared.rawInput || "");
+    schedules = shared.schedules;
+    importWarnings = Array.isArray(shared.importWarnings) ? shared.importWarnings : [];
+    if (shared.rangeStart) rangeStartInput.value = shared.rangeStart;
+    if (shared.rangeEnd) rangeEndInput.value = shared.rangeEnd;
+    if (shared.messageFormat === "traditional" || shared.messageFormat === "modern") {
+      messageFormatSelect.value = shared.messageFormat;
+    }
+    if (shared.scheduleRegionFilter === "all" || shared.scheduleRegionFilter === "north" || shared.scheduleRegionFilter === "south") {
+      scheduleRegionFilter.value = shared.scheduleRegionFilter;
+    }
+    updateDateRangeLimits();
+    saveAppState();
+    if (history.replaceState) {
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+    }
+    setShareStatus("已載入分享行程，可接續編輯。");
+    return true;
+  } catch {
+    setShareStatus("分享連結無法讀取，請請對方重新分享一次。", true);
+    return false;
+  }
+}
+
+function encodeSharePayload(payload) {
+  const json = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeSharePayload(encoded) {
+  const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return fallbackCopyText(text);
+  }
+}
+
+function fallbackCopyText(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  textarea.remove();
+  return copied;
+}
+
+function setShareStatus(message, isError = false) {
+  shareStatus.textContent = message;
+  shareStatus.classList.toggle("error", isError);
 }
 
 function setImportStatus(message, isError = false) {

@@ -71,15 +71,19 @@
             <h2>行程編輯</h2>
             <p id="summaryText">尚未產生行程</p>
           </div>
-          <label class="schedule-filter" for="scheduleRegionFilter">
-            顯示範圍
-            <select id="scheduleRegionFilter">
-              <option value="all">全區</option>
-              <option value="north">北區</option>
-              <option value="south">中南區</option>
-            </select>
-          </label>
+          <div class="edit-tools">
+            <button id="shareEditBtn" type="button" class="ghost-btn">分享目前編輯</button>
+            <label class="schedule-filter" for="scheduleRegionFilter">
+              顯示範圍
+              <select id="scheduleRegionFilter">
+                <option value="all">全區</option>
+                <option value="north">北區</option>
+                <option value="south">中南區</option>
+              </select>
+            </label>
+          </div>
         </div>
+        <p id="shareStatus" class="share-status" aria-live="polite"></p>
         <div class="table-wrap">
           <table>
             <thead>
