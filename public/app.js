@@ -1,12 +1,12 @@
-const APP_VERSION = "V2.10.1";
+const APP_VERSION = "V2.10.2";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "分享目前編輯只產生短網址，不再使用長網址備援。",
-  "複製內容會是「點我繼續編輯行程」加上短網址。"
+  "分享短網址建立失敗時，會顯示更明確的 Netlify 錯誤原因。",
+  "複製內容維持「點我繼續編輯行程」加上短網址。"
 ];
 
 const NORTH_PLACES = [
@@ -999,8 +999,8 @@ async function buildShareUrl() {
   try {
     const shortUrl = await createShortShareUrl(payload);
     if (shortUrl) return shortUrl;
-  } catch {
-    setShareStatus("短網址建立失敗，請確認 Netlify 已部署最新版本。", true);
+  } catch (error) {
+    setShareStatus(error?.message || "短網址建立失敗，請確認 Netlify 已部署最新版本。", true);
   }
   return "";
 }
@@ -1011,8 +1011,16 @@ async function createShortShareUrl(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ payload })
   });
-  const data = await response.json();
-  if (!response.ok || !data.id) throw new Error(data.error || "Unable to create share link");
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
+  if (!response.ok || !data.id) {
+    throw new Error(data.error || `短網址建立失敗：Netlify 回應 ${response.status}`);
+  }
   const url = new URL(`${location.origin}${location.pathname}`);
   url.searchParams.set(SHARE_QUERY_KEY, data.id);
   return url.toString();

@@ -29,11 +29,16 @@ async function createShare(event) {
   }
 
   const id = createShareId();
-  const store = getStore(STORE_NAME);
-  await store.set(id, JSON.stringify({
-    payload: parsed.payload,
-    createdAt: new Date().toISOString()
-  }));
+  try {
+    const store = getStore(STORE_NAME);
+    await store.set(id, JSON.stringify({
+      payload: parsed.payload,
+      createdAt: new Date().toISOString()
+    }));
+  } catch (error) {
+    console.error("Share save failed:", error?.message || error);
+    return jsonResponse(500, { error: "短網址儲存失敗，請確認 Netlify Blobs / Functions 可正常使用。" });
+  }
 
   return jsonResponse(200, { id });
 }
@@ -44,8 +49,14 @@ async function readShare(event) {
     return jsonResponse(400, { error: "分享代碼格式不正確。" });
   }
 
-  const store = getStore(STORE_NAME);
-  const raw = await store.get(id);
+  let raw;
+  try {
+    const store = getStore(STORE_NAME);
+    raw = await store.get(id);
+  } catch (error) {
+    console.error("Share read failed:", error?.message || error);
+    return jsonResponse(500, { error: "分享資料讀取失敗，請確認 Netlify Blobs / Functions 可正常使用。" });
+  }
   if (!raw) return jsonResponse(404, { error: "找不到此分享行程。" });
 
   try {
