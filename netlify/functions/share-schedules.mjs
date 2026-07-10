@@ -30,7 +30,7 @@ async function createShare(event) {
 
   const id = createShareId();
   try {
-    const store = getStore(STORE_NAME);
+    const store = getShareStore();
     await store.set(id, JSON.stringify({
       payload: parsed.payload,
       createdAt: new Date().toISOString()
@@ -53,7 +53,7 @@ async function readShare(event) {
 
   let raw;
   try {
-    const store = getStore(STORE_NAME);
+    const store = getShareStore();
     raw = await store.get(id);
   } catch (error) {
     console.error("Share read failed:", error?.message || error);
@@ -75,8 +75,21 @@ function createShareId() {
   return randomBytes(9).toString("base64url");
 }
 
+function getShareStore() {
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+  if (siteID && token) {
+    return getStore({ name: STORE_NAME, siteID, token });
+  }
+  return getStore(STORE_NAME);
+}
+
 function sanitizeErrorMessage(error) {
-  return String(error?.message || error || "Netlify Blobs / Functions 發生未知錯誤")
+  const message = String(error?.message || error || "Netlify Blobs / Functions 發生未知錯誤");
+  if (/siteID,\s*token/i.test(message)) {
+    return "Netlify Blobs 需要環境變數 NETLIFY_SITE_ID 與 NETLIFY_BLOBS_TOKEN。";
+  }
+  return message
     .replace(/https?:\/\/\S+/g, "[url]")
     .replace(/[A-Za-z0-9_-]{32,}/g, "[hidden]")
     .slice(0, 180);

@@ -1,11 +1,11 @@
-const APP_VERSION = "V2.10.3";
+const APP_VERSION = "V2.10.4";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "分享短網址建立失敗時，會直接顯示 Netlify 儲存錯誤細節。",
+  "短網址儲存支援 Netlify Blobs 手動環境變數設定。",
   "複製內容維持「點我繼續編輯行程」加上短網址。"
 ];
 
