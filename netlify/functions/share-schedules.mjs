@@ -37,7 +37,9 @@ async function createShare(event) {
     }));
   } catch (error) {
     console.error("Share save failed:", error?.message || error);
-    return jsonResponse(500, { error: "短網址儲存失敗，請確認 Netlify Blobs / Functions 可正常使用。" });
+    return jsonResponse(500, {
+      error: `短網址儲存失敗：${sanitizeErrorMessage(error)}`
+    });
   }
 
   return jsonResponse(200, { id });
@@ -55,7 +57,9 @@ async function readShare(event) {
     raw = await store.get(id);
   } catch (error) {
     console.error("Share read failed:", error?.message || error);
-    return jsonResponse(500, { error: "分享資料讀取失敗，請確認 Netlify Blobs / Functions 可正常使用。" });
+    return jsonResponse(500, {
+      error: `分享資料讀取失敗：${sanitizeErrorMessage(error)}`
+    });
   }
   if (!raw) return jsonResponse(404, { error: "找不到此分享行程。" });
 
@@ -69,6 +73,13 @@ async function readShare(event) {
 
 function createShareId() {
   return randomBytes(9).toString("base64url");
+}
+
+function sanitizeErrorMessage(error) {
+  return String(error?.message || error || "Netlify Blobs / Functions 發生未知錯誤")
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/[A-Za-z0-9_-]{32,}/g, "[hidden]")
+    .slice(0, 180);
 }
 
 function jsonResponse(statusCode, data) {
