@@ -7,6 +7,11 @@
   to = "/.netlify/functions/import-schedules"
   status = 200
 
+[[redirects]]
+  from = "/api/share-schedules"
+  to = "/.netlify/functions/share-schedules"
+  status = 200
+
 [[headers]]
   for = "/api/*"
   [headers.values]

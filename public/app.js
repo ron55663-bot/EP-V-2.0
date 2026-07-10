@@ -1,10 +1,12 @@
-const APP_VERSION = "V2.9.1";
+const APP_VERSION = "V2.10.1";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
+const SHARE_QUERY_KEY = "share";
+const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "分享目前編輯改用精簡連結，降低 iPhone 分享到 LINE 時失效的機率。",
-  "分享時只傳送連結，同事開啟後仍可查看並接續修改行程。"
+  "分享目前編輯只產生短網址，不再使用長網址備援。",
+  "複製內容會是「點我繼續編輯行程」加上短網址。"
 ];
 
 const NORTH_PLACES = [
@@ -82,6 +84,7 @@ let currentShareUrl = "";
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
 if (!loadSharedStateFromUrl()) restoreAppState();
+loadServerSharedStateFromUrl();
 showReleaseNotesOnce();
 
 releaseConfirmBtn.addEventListener("click", closeReleaseNotes);
@@ -954,10 +957,13 @@ async function shareCurrentEdit() {
   if (!window.confirm("分享連結會包含目前行程與電話資料，請只傳給可信任同事。")) return;
 
   saveAppState();
-  const shareUrl = buildShareUrl();
+  const shareUrl = await buildShareUrl();
+  if (!shareUrl) return;
+  const shareText = formatShareText(shareUrl);
   currentShareUrl = shareUrl;
   const shareData = {
     title: "儀器排程編輯",
+    text: SHARE_MESSAGE_PREFIX,
     url: shareUrl
   };
 
@@ -974,19 +980,64 @@ async function shareCurrentEdit() {
     }
   }
 
-  const copied = await copyTextToClipboard(shareUrl);
+  const copied = await copyTextToClipboard(shareText);
   if (copied) {
     setShareStatus("已複製分享連結，同事開啟後可查看並接續編輯。");
     return;
   }
-  openShareDialog(shareUrl);
+  openShareDialog(shareText);
   setShareStatus("瀏覽器未允許自動複製，請從視窗複製連結。", true);
 }
 
-function buildShareUrl() {
+async function buildShareUrl() {
   const payload = createCompactSharePayload();
-  const baseUrl = `${location.origin}${location.pathname}${location.search}`;
-  return `${baseUrl}${SHARE_HASH_PREFIX}${encodeSharePayload(payload)}`;
+  if (location.hostname === "127.0.0.1" || location.hostname === "localhost" || location.protocol === "file:") {
+    setShareStatus("短網址需在 Netlify 正式網址使用，本機預覽不會產生分享連結。", true);
+    return "";
+  }
+
+  try {
+    const shortUrl = await createShortShareUrl(payload);
+    if (shortUrl) return shortUrl;
+  } catch {
+    setShareStatus("短網址建立失敗，請確認 Netlify 已部署最新版本。", true);
+  }
+  return "";
+}
+
+async function createShortShareUrl(payload) {
+  const response = await fetch("/api/share-schedules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.id) throw new Error(data.error || "Unable to create share link");
+  const url = new URL(`${location.origin}${location.pathname}`);
+  url.searchParams.set(SHARE_QUERY_KEY, data.id);
+  return url.toString();
+}
+
+async function loadServerSharedStateFromUrl() {
+  const id = new URLSearchParams(location.search).get(SHARE_QUERY_KEY);
+  if (!id) return false;
+
+  try {
+    const response = await fetch(`/api/share-schedules?id=${encodeURIComponent(id)}`);
+    const data = await response.json();
+    if (!response.ok || !data.payload) throw new Error(data.error || "Unable to load share");
+    applySharedState(data.payload);
+    saveAppState();
+    if (history.replaceState) history.replaceState(null, "", location.pathname);
+    setShareStatus("已載入分享行程，可接續編輯。");
+    renderTable();
+    renderOutputs();
+    renderTracker();
+    return true;
+  } catch {
+    setShareStatus("分享連結無法讀取，請對方重新分享一次。", true);
+    return false;
+  }
 }
 
 function loadSharedStateFromUrl() {
@@ -994,23 +1045,7 @@ function loadSharedStateFromUrl() {
 
   try {
     const shared = decodeSharePayload(location.hash.slice(SHARE_HASH_PREFIX.length));
-    const sharedSchedules = shared.schedules || shared.s;
-    if (!shared || !Array.isArray(sharedSchedules)) throw new Error("Invalid shared data");
-
-    rawInput.value = String(shared.rawInput || "");
-    schedules = normalizeSharedSchedules(sharedSchedules);
-    importWarnings = Array.isArray(shared.importWarnings) ? shared.importWarnings : Array.isArray(shared.w) ? shared.w : [];
-    if (shared.rangeStart || shared.rs) rangeStartInput.value = shared.rangeStart || shared.rs;
-    if (shared.rangeEnd || shared.re) rangeEndInput.value = shared.rangeEnd || shared.re;
-    const sharedMessageFormat = shared.messageFormat || shared.mf;
-    if (sharedMessageFormat === "traditional" || sharedMessageFormat === "modern") {
-      messageFormatSelect.value = sharedMessageFormat;
-    }
-    const sharedRegionFilter = shared.scheduleRegionFilter || shared.rf;
-    if (sharedRegionFilter === "all" || sharedRegionFilter === "north" || sharedRegionFilter === "south") {
-      scheduleRegionFilter.value = sharedRegionFilter;
-    }
-    updateDateRangeLimits();
+    applySharedState(shared);
     saveAppState();
     if (history.replaceState) {
       history.replaceState(null, "", `${location.pathname}${location.search}`);
@@ -1021,6 +1056,26 @@ function loadSharedStateFromUrl() {
     setShareStatus("分享連結無法讀取，請對方重新分享一次。", true);
     return false;
   }
+}
+
+function applySharedState(shared) {
+  const sharedSchedules = shared.schedules || shared.s;
+  if (!shared || !Array.isArray(sharedSchedules)) throw new Error("Invalid shared data");
+
+  rawInput.value = String(shared.rawInput || "");
+  schedules = normalizeSharedSchedules(sharedSchedules);
+  importWarnings = Array.isArray(shared.importWarnings) ? shared.importWarnings : Array.isArray(shared.w) ? shared.w : [];
+  if (shared.rangeStart || shared.rs) rangeStartInput.value = shared.rangeStart || shared.rs;
+  if (shared.rangeEnd || shared.re) rangeEndInput.value = shared.rangeEnd || shared.re;
+  const sharedMessageFormat = shared.messageFormat || shared.mf;
+  if (sharedMessageFormat === "traditional" || sharedMessageFormat === "modern") {
+    messageFormatSelect.value = sharedMessageFormat;
+  }
+  const sharedRegionFilter = shared.scheduleRegionFilter || shared.rf;
+  if (sharedRegionFilter === "all" || sharedRegionFilter === "north" || sharedRegionFilter === "south") {
+    scheduleRegionFilter.value = sharedRegionFilter;
+  }
+  updateDateRangeLimits();
 }
 
 function encodeSharePayload(payload) {
@@ -1151,6 +1206,10 @@ function closeShareDialog() {
     return;
   }
   shareDialog.removeAttribute("open");
+}
+
+function formatShareText(url) {
+  return `${SHARE_MESSAGE_PREFIX}\n${url}`;
 }
 
 function setShareStatus(message, isError = false) {
