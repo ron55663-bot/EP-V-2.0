@@ -207,6 +207,23 @@
     </div>
   </dialog>
 
+  <dialog id="shareDialog" class="release-dialog share-dialog" aria-labelledby="shareDialogTitle">
+    <div class="release-head">
+      <div>
+        <p class="release-kicker">SHARE LINK</p>
+        <h2 id="shareDialogTitle">分享連結</h2>
+      </div>
+      <button id="shareDialogCloseBtn" type="button" class="dialog-close-btn" aria-label="關閉">×</button>
+    </div>
+    <div class="release-body">
+      <p class="share-dialog-note">若瀏覽器沒有自動複製，請按下方按鈕或手動複製此連結。</p>
+      <textarea id="shareLinkText" class="share-link-text" readonly></textarea>
+    </div>
+    <div class="release-actions">
+      <button id="shareDialogCopyBtn" type="button" class="primary-btn">複製連結</button>
+    </div>
+  </dialog>
+
   <template id="rowTemplate">
     <tr>
       <td><input data-field="date"></td>

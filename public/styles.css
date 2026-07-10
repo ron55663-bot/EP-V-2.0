@@ -205,6 +205,30 @@ button:disabled {
   margin-top: 7px;
 }
 
+.share-dialog {
+  width: min(680px, calc(100% - 28px));
+}
+
+.share-dialog-note {
+  margin-bottom: 10px;
+  color: #394650;
+  font-weight: 700;
+}
+
+.share-link-text {
+  width: 100%;
+  min-height: 138px;
+  resize: vertical;
+  border: 1px solid #cbd4ce;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #fbfcfa;
+  font-family: "SFMono-Regular", Consolas, "Noto Sans Mono CJK TC", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .release-actions {
   display: flex;
   justify-content: flex-end;

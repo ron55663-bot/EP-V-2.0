@@ -1,10 +1,10 @@
-const APP_VERSION = "V2.9.0";
+const APP_VERSION = "V2.9.1";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const RELEASE_NOTES = [
-  "新增分享目前編輯，可在 iPhone 直接分享到 LINE。",
-  "同事開啟分享連結後，可看到已編輯完成的行程並接續修改。"
+  "分享目前編輯改用精簡連結，降低 iPhone 分享到 LINE 時失效的機率。",
+  "分享時只傳送連結，同事開啟後仍可查看並接續修改行程。"
 ];
 
 const NORTH_PLACES = [
@@ -72,6 +72,12 @@ const messageFormatSelect = document.getElementById("messageFormatSelect");
 const scheduleRegionFilter = document.getElementById("scheduleRegionFilter");
 const shareEditBtn = document.getElementById("shareEditBtn");
 const shareStatus = document.getElementById("shareStatus");
+const shareDialog = document.getElementById("shareDialog");
+const shareDialogCloseBtn = document.getElementById("shareDialogCloseBtn");
+const shareDialogCopyBtn = document.getElementById("shareDialogCopyBtn");
+const shareLinkText = document.getElementById("shareLinkText");
+
+let currentShareUrl = "";
 
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
@@ -92,6 +98,13 @@ scheduleRegionFilter.addEventListener("change", () => {
 });
 
 shareEditBtn.addEventListener("click", shareCurrentEdit);
+shareDialogCloseBtn.addEventListener("click", closeShareDialog);
+shareDialogCopyBtn.addEventListener("click", async () => {
+  const copied = await copyTextToClipboard(shareLinkText.value);
+  setShareStatus(copied ? "已複製分享連結。" : "仍無法自動複製，請手動選取連結。", !copied);
+  if (copied) closeShareDialog();
+});
+shareLinkText.addEventListener("focus", () => shareLinkText.select());
 
 toggleSourceBtn.addEventListener("click", () => {
   const collapsed = inputPane.classList.toggle("source-collapsed");
@@ -942,9 +955,9 @@ async function shareCurrentEdit() {
 
   saveAppState();
   const shareUrl = buildShareUrl();
+  currentShareUrl = shareUrl;
   const shareData = {
     title: "儀器排程編輯",
-    text: "請開啟此連結查看並接續編輯行程。",
     url: shareUrl
   };
 
@@ -962,23 +975,16 @@ async function shareCurrentEdit() {
   }
 
   const copied = await copyTextToClipboard(shareUrl);
-  setShareStatus(
-    copied ? "已複製分享連結，同事開啟後可查看並接續編輯。" : "無法自動複製，請手動複製網址列的分享連結。",
-    !copied
-  );
+  if (copied) {
+    setShareStatus("已複製分享連結，同事開啟後可查看並接續編輯。");
+    return;
+  }
+  openShareDialog(shareUrl);
+  setShareStatus("瀏覽器未允許自動複製，請從視窗複製連結。", true);
 }
 
 function buildShareUrl() {
-  const payload = {
-    version: APP_VERSION,
-    rawInput: rawInput.value,
-    schedules,
-    importWarnings,
-    rangeStart: rangeStartInput.value,
-    rangeEnd: rangeEndInput.value,
-    messageFormat: messageFormatSelect.value,
-    scheduleRegionFilter: scheduleRegionFilter.value
-  };
+  const payload = createCompactSharePayload();
   const baseUrl = `${location.origin}${location.pathname}${location.search}`;
   return `${baseUrl}${SHARE_HASH_PREFIX}${encodeSharePayload(payload)}`;
 }
@@ -988,18 +994,21 @@ function loadSharedStateFromUrl() {
 
   try {
     const shared = decodeSharePayload(location.hash.slice(SHARE_HASH_PREFIX.length));
-    if (!shared || !Array.isArray(shared.schedules)) throw new Error("Invalid shared data");
+    const sharedSchedules = shared.schedules || shared.s;
+    if (!shared || !Array.isArray(sharedSchedules)) throw new Error("Invalid shared data");
 
     rawInput.value = String(shared.rawInput || "");
-    schedules = shared.schedules;
-    importWarnings = Array.isArray(shared.importWarnings) ? shared.importWarnings : [];
-    if (shared.rangeStart) rangeStartInput.value = shared.rangeStart;
-    if (shared.rangeEnd) rangeEndInput.value = shared.rangeEnd;
-    if (shared.messageFormat === "traditional" || shared.messageFormat === "modern") {
-      messageFormatSelect.value = shared.messageFormat;
+    schedules = normalizeSharedSchedules(sharedSchedules);
+    importWarnings = Array.isArray(shared.importWarnings) ? shared.importWarnings : Array.isArray(shared.w) ? shared.w : [];
+    if (shared.rangeStart || shared.rs) rangeStartInput.value = shared.rangeStart || shared.rs;
+    if (shared.rangeEnd || shared.re) rangeEndInput.value = shared.rangeEnd || shared.re;
+    const sharedMessageFormat = shared.messageFormat || shared.mf;
+    if (sharedMessageFormat === "traditional" || sharedMessageFormat === "modern") {
+      messageFormatSelect.value = sharedMessageFormat;
     }
-    if (shared.scheduleRegionFilter === "all" || shared.scheduleRegionFilter === "north" || shared.scheduleRegionFilter === "south") {
-      scheduleRegionFilter.value = shared.scheduleRegionFilter;
+    const sharedRegionFilter = shared.scheduleRegionFilter || shared.rf;
+    if (sharedRegionFilter === "all" || sharedRegionFilter === "north" || sharedRegionFilter === "south") {
+      scheduleRegionFilter.value = sharedRegionFilter;
     }
     updateDateRangeLimits();
     saveAppState();
@@ -1009,7 +1018,7 @@ function loadSharedStateFromUrl() {
     setShareStatus("已載入分享行程，可接續編輯。");
     return true;
   } catch {
-    setShareStatus("分享連結無法讀取，請請對方重新分享一次。", true);
+    setShareStatus("分享連結無法讀取，請對方重新分享一次。", true);
     return false;
   }
 }
@@ -1031,13 +1040,72 @@ function decodeSharePayload(encoded) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
+function createCompactSharePayload() {
+  return {
+    v: 2,
+    s: schedules.map(compactScheduleForShare),
+    w: importWarnings,
+    rs: rangeStartInput.value,
+    re: rangeEndInput.value,
+    mf: messageFormatSelect.value,
+    rf: scheduleRegionFilter.value
+  };
+}
+
+function compactScheduleForShare(schedule) {
+  return [
+    schedule.date || "",
+    schedule.region || "",
+    schedule.from || "",
+    schedule.to || "",
+    schedule.instruments || "",
+    schedule.delivery || "",
+    schedule.action || "",
+    schedule.time || "",
+    schedule.contact || "",
+    schedule.phone || "",
+    schedule.parseWarning ? 1 : 0,
+    schedule.warningAcknowledged ? 1 : 0
+  ];
+}
+
+function normalizeSharedSchedules(sharedSchedules) {
+  if (!Array.isArray(sharedSchedules)) return [];
+  if (sharedSchedules.every(Array.isArray)) {
+    return sharedSchedules.map(expandSharedSchedule);
+  }
+  return sharedSchedules;
+}
+
+function expandSharedSchedule(values, index) {
+  return {
+    id: `shared-${Date.now()}-${index}`,
+    date: values[0] || "",
+    region: values[1] || "unknown",
+    from: values[2] || "",
+    to: values[3] || "",
+    instruments: values[4] || "",
+    delivery: values[5] || "self",
+    action: values[6] || "",
+    time: values[7] || "",
+    contact: values[8] || "",
+    phone: values[9] || "",
+    contactEntries: values[8] ? [{ name: values[8], phone: values[9] || "" }] : [],
+    parseWarning: values[10] === 1,
+    warningAcknowledged: values[11] === 1
+  };
+}
+
 async function copyTextToClipboard(text) {
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
   } catch {
-    return fallbackCopyText(text);
+    // Fall back to the older copy command below.
   }
+  return fallbackCopyText(text);
 }
 
 function fallbackCopyText(text) {
@@ -1045,9 +1113,15 @@ function fallbackCopyText(text) {
   textarea.value = text;
   textarea.setAttribute("readonly", "");
   textarea.style.position = "fixed";
-  textarea.style.top = "-999px";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.width = "1px";
+  textarea.style.height = "1px";
+  textarea.style.opacity = "0";
   document.body.appendChild(textarea);
+  textarea.focus({ preventScroll: true });
   textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
   let copied = false;
   try {
     copied = document.execCommand("copy");
@@ -1056,6 +1130,27 @@ function fallbackCopyText(text) {
   }
   textarea.remove();
   return copied;
+}
+
+function openShareDialog(url) {
+  shareLinkText.value = url;
+  if (typeof shareDialog.showModal === "function") {
+    shareDialog.showModal();
+  } else {
+    shareDialog.setAttribute("open", "");
+  }
+  requestAnimationFrame(() => {
+    shareLinkText.focus();
+    shareLinkText.select();
+  });
+}
+
+function closeShareDialog() {
+  if (typeof shareDialog.close === "function") {
+    shareDialog.close();
+    return;
+  }
+  shareDialog.removeAttribute("open");
 }
 
 function setShareStatus(message, isError = false) {
