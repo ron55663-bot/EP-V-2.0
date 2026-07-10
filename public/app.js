@@ -1,12 +1,12 @@
-const APP_VERSION = "V2.10.4";
+const APP_VERSION = "V2.10.5";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "短網址儲存支援 Netlify Blobs 手動環境變數設定。",
-  "複製內容維持「點我繼續編輯行程」加上短網址。"
+  "新增匯出編輯檔與匯入編輯檔，方便同事接續修改。",
+  "短網址分享可先暫停使用，編輯檔不受 Netlify Blobs 影響。"
 ];
 
 const NORTH_PLACES = [
@@ -73,6 +73,9 @@ const releaseCloseBtn = document.getElementById("releaseCloseBtn");
 const messageFormatSelect = document.getElementById("messageFormatSelect");
 const scheduleRegionFilter = document.getElementById("scheduleRegionFilter");
 const shareEditBtn = document.getElementById("shareEditBtn");
+const exportEditBtn = document.getElementById("exportEditBtn");
+const importEditBtn = document.getElementById("importEditBtn");
+const editFileInput = document.getElementById("editFileInput");
 const shareStatus = document.getElementById("shareStatus");
 const shareDialog = document.getElementById("shareDialog");
 const shareDialogCloseBtn = document.getElementById("shareDialogCloseBtn");
@@ -101,6 +104,9 @@ scheduleRegionFilter.addEventListener("change", () => {
 });
 
 shareEditBtn.addEventListener("click", shareCurrentEdit);
+exportEditBtn.addEventListener("click", exportEditFile);
+importEditBtn.addEventListener("click", () => editFileInput.click());
+editFileInput.addEventListener("change", importEditFile);
 shareDialogCloseBtn.addEventListener("click", closeShareDialog);
 shareDialogCopyBtn.addEventListener("click", async () => {
   const copied = await copyTextToClipboard(shareLinkText.value);
@@ -987,6 +993,67 @@ async function shareCurrentEdit() {
   }
   openShareDialog(shareText);
   setShareStatus("瀏覽器未允許自動複製，請從視窗複製連結。", true);
+}
+
+function exportEditFile() {
+  if (!schedules.length) {
+    setShareStatus("目前沒有可匯出的行程。", true);
+    return;
+  }
+  if (!window.confirm("編輯檔會包含目前行程與電話資料，請只傳給可信任同事。")) return;
+
+  saveAppState();
+  const data = {
+    type: "line-schedule-tool-edit",
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    payload: createCompactSharePayload()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const link = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+  link.href = objectUrl;
+  link.download = createEditFileName();
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+  setShareStatus("已匯出編輯檔，可傳給同事匯入後接續編輯。");
+}
+
+async function importEditFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const payload = data?.payload || data;
+    applySharedState(payload);
+    saveAppState();
+    renderTable();
+    renderOutputs();
+    renderTracker();
+    setShareStatus(`已匯入「${file.name}」，可接續編輯。`);
+  } catch {
+    setShareStatus("編輯檔無法讀取，請確認是本程式匯出的 JSON 檔。", true);
+  }
+}
+
+function createEditFileName() {
+  const dates = schedules.map((schedule) => schedule.date).filter(Boolean);
+  const today = new Date().toISOString().slice(0, 10);
+  const firstDate = dates[0] || today;
+  const lastDate = dates[dates.length - 1] || firstDate;
+  return `儀器排程編輯檔_${sanitizeFileName(firstDate)}-${sanitizeFileName(lastDate)}.json`;
+}
+
+function sanitizeFileName(value) {
+  return String(value || "")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "")
+    .slice(0, 30) || "未命名";
 }
 
 async function buildShareUrl() {
