@@ -1,12 +1,12 @@
-const APP_VERSION = "V2.10.5";
+const APP_VERSION = "V2.10.6";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "新增匯出編輯檔與匯入編輯檔，方便同事接續修改。",
-  "短網址分享可先暫停使用，編輯檔不受 Netlify Blobs 影響。"
+  "中南區醫院新增嘉義全統與802醫院。",
+  "傳統格式取回時間改顯示在起點，同日 Line 行程依時間排序。"
 ];
 
 const NORTH_PLACES = [
@@ -19,7 +19,7 @@ const SOUTH_PLACES = [
   "中榮", "中榮秀傳", "濱秀", "中國", "中國醫", "中國兒科", "彰基", "中山", "大里仁愛",
   "麻新", "嘉長", "嘉榮", "嘉基", "高榮", "高醫", "高醫岡山", "南辦", "中辦", "高辦",
   "雲大", "雲林台大", "斗六成大", "成大", "高長", "長安", "屏基", "屏榮", "大林慈濟",
-  "中慈", "奇美", "高雄全統", "802"
+  "中慈", "奇美", "高雄全統", "嘉義全統", "802", "802醫院"
 ];
 
 const CARGO_CODES = [
@@ -1634,23 +1634,46 @@ function appendGrouped(lines, items) {
   }
 
   const grouped = new Map();
-  items.forEach((item) => {
+  items.forEach((item, index) => {
     const key = item.date || "未填日期";
     if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(item);
+    grouped.get(key).push({ item, index });
   });
 
-  [...grouped.entries()].forEach(([date, entries], dateIndex) => {
+  [...grouped.entries()]
+    .sort(([dateA], [dateB]) => compareDate(dateA, dateB))
+    .forEach(([date, entries], dateIndex) => {
     if (dateIndex > 0) lines.push("");
     const dateLabel = messageFormatSelect.value === "traditional"
       ? formatTraditionalDateWithWeekday(date)
       : formatDateWithWeekday(date);
     lines.push(`<<${dateLabel}>>`);
-    entries.forEach((item, index) => {
-      if (index > 0) lines.push("");
-      lines.push(formatSchedule(item));
+    entries
+      .sort(compareMessageEntry)
+      .forEach(({ item }, index) => {
+        if (index > 0) lines.push("");
+        lines.push(formatSchedule(item));
     });
   });
+}
+
+function compareMessageEntry(a, b) {
+  const timeCompare = getTimeSortValue(a.item.time) - getTimeSortValue(b.item.time);
+  if (timeCompare) return timeCompare;
+
+  const fromCompare = compareText(a.item.from, b.item.from);
+  if (fromCompare) return fromCompare;
+
+  const toCompare = compareText(a.item.to, b.item.to);
+  if (toCompare) return toCompare;
+
+  return a.index - b.index;
+}
+
+function getTimeSortValue(time) {
+  const match = String(time || "").match(/^(\d{1,2}):?(\d{2})$/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 function formatSchedule(item) {
@@ -1665,8 +1688,11 @@ function formatTraditionalSchedule(item) {
   const warning = scheduleNeedsReview(item) ? "❗️ " : "";
   const contact = item.contact || "業務";
   const contactLine = `聯絡人_${contact}${item.phone ? `_${item.phone}` : ""}`;
+  const route = item.action === "取回"
+    ? `${item.from}${suffix} 至 ${item.to}`
+    : `${item.from} 至 ${item.to}${suffix}`;
   return [
-    `${warning}${item.from} 至 ${item.to}${suffix}`,
+    `${warning}${route}`,
     contactLine,
     `儀器_${item.instruments || "未填"}`
   ].join("\n");
