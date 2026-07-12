@@ -1,12 +1,12 @@
-const APP_VERSION = "V2.10.7";
+const APP_VERSION = "V2.10.9";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "解析時間後方文字為備註，Line 訊息會另行顯示。",
-  "行程編輯新增備註欄位，匯出編輯檔也會保留備註。"
+  "運送新增寄送選項，Line 路線顯示為起點 寄送 終點。",
+  "頁尾更新為 Designed by Ron, with assistance from Billy, Anna."
 ];
 
 const NORTH_PLACES = [
@@ -427,13 +427,13 @@ function extractRouteNote(line) {
     return { routeText: normalized, note: "" };
   }
 
-  const compactAfterAction = normalized.match(/(?:隔日送達|送達|抵達|到達|取回)(\d{3,4})(.+)$/);
+  const compactAfterAction = normalized.match(/(?:隔日送達|送達|抵達|到達|取回)(\d{3,4})(\D.+)$/);
   if (compactAfterAction) {
     const note = normalizeRouteNote(compactAfterAction[2]);
     if (note) return { routeText: normalized.slice(0, -compactAfterAction[2].length), note };
   }
 
-  const compactBeforeAction = normalized.match(/(\d{3,4})(?:隔日送達|送達|抵達|到達|取回)(.+)$/);
+  const compactBeforeAction = normalized.match(/(\d{3,4})(?:隔日送達|送達|抵達|到達|取回)(\D.+)$/);
   if (compactBeforeAction) {
     const note = normalizeRouteNote(compactBeforeAction[2]);
     if (note) return { routeText: normalized.slice(0, -compactBeforeAction[2].length), note };
@@ -747,6 +747,7 @@ function getRegionSortValue(region) {
 function getDeliverySortValue(delivery) {
   if (delivery === "cargo") return 0;
   if (delivery === "self") return 1;
+  if (delivery === "ship") return 1;
   if (delivery === "company") return 2;
   return 2;
 }
@@ -1643,7 +1644,7 @@ function buildMessage(region) {
   const unknown = outputSchedules.filter((item) => item.region === "unknown");
   const cross = outputSchedules.filter((item) => item.region !== region && item.region !== "unknown" && isCrossRegionReminder(item, region));
   const cargo = own.filter((item) => item.delivery === "cargo");
-  const self = own.filter((item) => item.delivery === "self");
+  const self = own.filter((item) => item.delivery === "self" || item.delivery === "ship");
   const company = own.filter((item) => item.delivery === "company");
   const lines = [title, `日期範圍：${formatSelectedRangeLabel()}`, "請各業務務必確認行程內容謝謝"];
 
@@ -1737,7 +1738,9 @@ function formatTraditionalSchedule(item) {
   const warning = scheduleNeedsReview(item) ? "❗️ " : "";
   const contact = item.contact || "業務";
   const contactLine = `聯絡人_${contact}${item.phone ? `_${item.phone}` : ""}`;
-  const route = item.action === "取回"
+  const route = item.delivery === "ship"
+    ? `${item.from} 寄送 ${item.to}`
+    : item.action === "取回"
     ? `${item.from}${suffix} 至 ${item.to}`
     : `${item.from} 至 ${item.to}${suffix}`;
   const lines = [
@@ -1752,7 +1755,9 @@ function formatTraditionalSchedule(item) {
 function formatModernSchedule(item) {
   const suffix = formatTimeAction(item);
   const warning = scheduleNeedsReview(item) ? "❗️ " : "";
-  const route = item.action === "取回"
+  const route = item.delivery === "ship"
+    ? `${item.from} 寄送 ${item.to}`
+    : item.action === "取回"
     ? `${item.from}${suffix} 至 ${item.to}`
     : `${item.from} 至 ${item.to}${suffix}`;
   const lines = [
