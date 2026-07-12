@@ -1,12 +1,12 @@
-const APP_VERSION = "V2.10.6";
+const APP_VERSION = "V2.10.7";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "中南區醫院新增嘉義全統與802醫院。",
-  "傳統格式取回時間改顯示在起點，同日 Line 行程依時間排序。"
+  "解析時間後方文字為備註，Line 訊息會另行顯示。",
+  "行程編輯新增備註欄位，匯出編輯檔也會保留備註。"
 ];
 
 const NORTH_PLACES = [
@@ -355,6 +355,7 @@ function parseBlock(block, index) {
     from: route.from,
     to: route.to,
     time: route.time,
+    note: route.note,
     action: route.action,
     contact: contact.name || "業務",
     phone: contact.phone,
@@ -368,6 +369,8 @@ function parseBlock(block, index) {
 
 function parseRoute(line) {
   let clean = line.replace(/\s+/g, "").replace(/^"+|"+$/g, "");
+  const noteInfo = extractRouteNote(clean);
+  clean = noteInfo.routeText;
   let action = "";
   const hasPickup = /取回/.test(clean);
   const hasNextDayDelivery = /隔日送達/.test(clean);
@@ -399,10 +402,51 @@ function parseRoute(line) {
     from: from || "未辨識",
     to: to || "未辨識",
     time,
+    note: noteInfo.note,
     action,
     missingOrigin: separatorIndex === 0,
     joinedNumericPlaceTime
   };
+}
+
+function extractRouteNote(line) {
+  const normalized = String(line || "");
+  const colonTime = normalized.match(/\d{1,2}:\d{2}/);
+  if (colonTime) {
+    const beforeAndTime = normalized.slice(0, colonTime.index + colonTime[0].length);
+    const afterTime = normalized.slice(colonTime.index + colonTime[0].length);
+    const actionPrefix = afterTime.match(/^(隔日送達|送達|抵達|到達|取回)/)?.[0] || "";
+    const rawNote = afterTime.slice(actionPrefix.length);
+    const note = normalizeRouteNote(rawNote);
+    if (note) {
+      return {
+        routeText: beforeAndTime + actionPrefix,
+        note
+      };
+    }
+    return { routeText: normalized, note: "" };
+  }
+
+  const compactAfterAction = normalized.match(/(?:隔日送達|送達|抵達|到達|取回)(\d{3,4})(.+)$/);
+  if (compactAfterAction) {
+    const note = normalizeRouteNote(compactAfterAction[2]);
+    if (note) return { routeText: normalized.slice(0, -compactAfterAction[2].length), note };
+  }
+
+  const compactBeforeAction = normalized.match(/(\d{3,4})(?:隔日送達|送達|抵達|到達|取回)(.+)$/);
+  if (compactBeforeAction) {
+    const note = normalizeRouteNote(compactBeforeAction[2]);
+    if (note) return { routeText: normalized.slice(0, -compactBeforeAction[2].length), note };
+  }
+
+  return { routeText: normalized, note: "" };
+}
+
+function normalizeRouteNote(value) {
+  return String(value || "")
+    .replace(/[：]/g, ":")
+    .replace(/^[-,，。:：]+/, "")
+    .trim();
 }
 
 function hasStandaloneNumericDestination(line) {
@@ -518,14 +562,14 @@ function classifyDelivery(instruments) {
 function renderTable() {
   scheduleBody.innerHTML = "";
   if (!schedules.length) {
-    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="11">貼上資料後，這裡會顯示可編輯的行程。</td></tr>';
+    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="12">貼上資料後，這裡會顯示可編輯的行程。</td></tr>';
     summaryText.textContent = "尚未產生行程";
     return;
   }
 
   const visibleIndexes = getVisibleScheduleIndexes();
   if (!visibleIndexes.length) {
-    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="11">目前篩選範圍沒有行程。</td></tr>';
+    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="12">目前篩選範圍沒有行程。</td></tr>';
     updateSummaryText(0);
     return;
   }
@@ -626,7 +670,7 @@ function createRegionDivider(region) {
   const dividerClass = region === "south" ? "south-divider" : region === "north" ? "north-divider" : "unknown-divider";
   row.className = `region-divider ${dividerClass}`;
   const cell = document.createElement("td");
-  cell.colSpan = 11;
+  cell.colSpan = 12;
   cell.textContent = region === "south" ? "中南區" : region === "north" ? "北區" : "❗️ 待確認區域";
   row.appendChild(cell);
   return row;
@@ -636,7 +680,7 @@ function createCompanyDeliveryDivider() {
   const row = document.createElement("tr");
   row.className = "region-divider company-divider";
   const cell = document.createElement("td");
-  cell.colSpan = 11;
+  cell.colSpan = 12;
   cell.textContent = "公司物流自送";
   row.appendChild(cell);
   return row;
@@ -1192,6 +1236,7 @@ function compactScheduleForShare(schedule) {
     schedule.delivery || "",
     schedule.action || "",
     schedule.time || "",
+    schedule.note || "",
     schedule.contact || "",
     schedule.phone || "",
     schedule.parseWarning ? 1 : 0,
@@ -1218,11 +1263,15 @@ function expandSharedSchedule(values, index) {
     delivery: values[5] || "self",
     action: values[6] || "",
     time: values[7] || "",
-    contact: values[8] || "",
-    phone: values[9] || "",
-    contactEntries: values[8] ? [{ name: values[8], phone: values[9] || "" }] : [],
-    parseWarning: values[10] === 1,
-    warningAcknowledged: values[11] === 1
+    note: values.length > 12 ? values[8] || "" : "",
+    contact: values.length > 12 ? values[9] || "" : values[8] || "",
+    phone: values.length > 12 ? values[10] || "" : values[9] || "",
+    contactEntries: (values.length > 12 ? values[9] : values[8]) ? [{
+      name: values.length > 12 ? values[9] : values[8],
+      phone: values.length > 12 ? values[10] || "" : values[9] || ""
+    }] : [],
+    parseWarning: values.length > 12 ? values[11] === 1 : values[10] === 1,
+    warningAcknowledged: values.length > 12 ? values[12] === 1 : values[11] === 1
   };
 }
 
@@ -1691,11 +1740,13 @@ function formatTraditionalSchedule(item) {
   const route = item.action === "取回"
     ? `${item.from}${suffix} 至 ${item.to}`
     : `${item.from} 至 ${item.to}${suffix}`;
-  return [
+  const lines = [
     `${warning}${route}`,
     contactLine,
     `儀器_${item.instruments || "未填"}`
-  ].join("\n");
+  ];
+  if (item.note) lines.push(`備註_${item.note}`);
+  return lines.join("\n");
 }
 
 function formatModernSchedule(item) {
@@ -1710,6 +1761,7 @@ function formatModernSchedule(item) {
   ];
   if (item.phone) lines.push(`📞 電話：${item.phone}`);
   lines.push(`📦 儀器：${item.instruments || "未填"}`);
+  if (item.note) lines.push(`🔴備註：${item.note}`);
   return lines.join("\n");
 }
 
