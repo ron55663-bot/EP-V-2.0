@@ -1,12 +1,11 @@
-const APP_VERSION = "V2.10.9";
+const APP_VERSION = "V2.10.10";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "運送新增寄送選項，Line 路線顯示為起點 寄送 終點。",
-  "頁尾更新為 Designed by Ron, with assistance from Billy, Anna."
+  "中南區醫院新增中國醫B棟。"
 ];
 
 const NORTH_PLACES = [
@@ -16,7 +15,7 @@ const NORTH_PLACES = [
 ];
 
 const SOUTH_PLACES = [
-  "中榮", "中榮秀傳", "濱秀", "中國", "中國醫", "中國兒科", "彰基", "中山", "大里仁愛",
+  "中榮", "中榮秀傳", "濱秀", "中國", "中國醫", "中國醫B棟", "中國兒科", "彰基", "中山", "大里仁愛",
   "麻新", "嘉長", "嘉榮", "嘉基", "高榮", "高醫", "高醫岡山", "南辦", "中辦", "高辦",
   "雲大", "雲林台大", "斗六成大", "成大", "高長", "長安", "屏基", "屏榮", "大林慈濟",
   "中慈", "奇美", "高雄全統", "嘉義全統", "802", "802醫院"
