@@ -1,5 +1,7 @@
 # Netlify 私人試算表設定
 
+目前版本：V3.0.0
+
 ## Google 設定
 
 1. 在 Google Cloud 建立專案並啟用 Google Sheets API 與 Google Drive API。

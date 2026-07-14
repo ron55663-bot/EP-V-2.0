@@ -62,7 +62,7 @@ button:disabled {
 .app-shell {
   width: min(1480px, calc(100% - 28px));
   margin: 0 auto;
-  padding: 14px 0 28px;
+  padding: 14px 0 118px;
 }
 
 .app-header {
@@ -97,35 +97,69 @@ button:disabled {
 }
 
 .page-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  gap: 3px;
-  margin-bottom: 14px;
-  padding-top: 3px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
+  position: fixed;
+  right: max(20px, calc((100vw - 760px) / 2));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: max(20px, calc((100vw - 760px) / 2));
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: min(760px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 8px;
+  border: 1px solid rgba(216, 221, 211, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 254, 250, 0.95);
+  box-shadow: 0 16px 42px rgba(31, 41, 51, 0.18);
+  backdrop-filter: blur(16px);
 }
 
 .tab-btn {
-  min-height: 44px;
-  border-radius: 6px 6px 0 0;
-  padding: 0 16px;
+  display: flex;
+  min-width: 0;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 999px;
+  padding: 0 12px;
   color: var(--muted);
   background: transparent;
+  font-size: 13px;
   font-weight: 800;
+  line-height: 1.15;
+  white-space: normal;
 }
 
 .tab-btn.active {
   color: var(--accent-strong);
-  background: var(--panel);
-  box-shadow: inset 0 -3px var(--accent);
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px rgba(25, 106, 110, 0.12);
 }
 
 .tab-btn:hover {
   color: var(--accent-strong);
   background: var(--soft);
+}
+
+.tab-icon {
+  display: grid;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent-strong);
+  background: rgba(25, 106, 110, 0.08);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.tab-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .page-view {
@@ -214,30 +248,6 @@ button:disabled {
   margin-top: 7px;
 }
 
-.share-dialog {
-  width: min(680px, calc(100% - 28px));
-}
-
-.share-dialog-note {
-  margin-bottom: 10px;
-  color: #394650;
-  font-weight: 700;
-}
-
-.share-link-text {
-  width: 100%;
-  min-height: 138px;
-  resize: vertical;
-  border: 1px solid #cbd4ce;
-  border-radius: 6px;
-  padding: 10px 12px;
-  color: var(--ink);
-  background: #fbfcfa;
-  font-family: "SFMono-Regular", Consolas, "Noto Sans Mono CJK TC", monospace;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .release-actions {
   display: flex;
   justify-content: flex-end;
@@ -252,7 +262,7 @@ button:disabled {
 }
 
 .workspace {
-  grid-template-columns: minmax(340px, 0.8fr) minmax(540px, 1.2fr);
+  grid-template-columns: 1fr;
   align-items: stretch;
 }
 
@@ -330,7 +340,6 @@ button:disabled {
   color: #a12622;
 }
 
-.input-pane,
 .edit-pane,
 .output-pane,
 .tracking-pane {
@@ -340,26 +349,10 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
-.input-pane,
 .output-pane {
   display: flex;
   min-height: 430px;
   flex-direction: column;
-}
-
-.source-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.input-pane.source-collapsed {
-  min-height: 0;
-}
-
-.input-pane.source-collapsed .source-content {
-  display: none;
 }
 
 .edit-pane {
@@ -378,28 +371,6 @@ button:disabled {
 
 .pane-head.tight {
   padding: 12px 14px;
-}
-
-.collapse-btn {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 6px;
-  border-radius: 6px;
-  padding: 0 10px;
-  color: var(--accent-strong);
-  background: var(--soft);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.collapse-icon {
-  font-size: 15px;
-  line-height: 1;
-}
-
-.input-pane.source-collapsed .collapse-icon {
-  transform: rotate(180deg);
 }
 
 h1,
@@ -424,7 +395,6 @@ p {
   font-size: 13px;
 }
 
-#rawInput,
 .output-pane textarea {
   width: 100%;
   flex: 1;
@@ -444,14 +414,7 @@ p {
   white-space: pre;
 }
 
-.action-row {
-  display: flex;
-  gap: 10px;
-  padding: 12px 16px 16px;
-  border-top: 1px solid var(--line);
-}
-
-.source-controls {
+.data-controls {
   padding: 12px 16px;
   border-top: 1px solid var(--line);
   background: #f7faf7;
@@ -858,10 +821,6 @@ td input[data-field="contact"] {
   .workspace {
     grid-template-columns: 1fr;
   }
-
-  .input-pane {
-    min-height: 390px;
-  }
 }
 
 @media (max-width: 640px) {
@@ -871,7 +830,7 @@ td input[data-field="contact"] {
 
   .app-shell {
     width: 100%;
-    padding: 0 0 18px;
+    padding: 0 0 108px;
   }
 
   .app-header {
@@ -890,16 +849,27 @@ td input[data-field="contact"] {
   }
 
   .page-tabs {
-    margin-bottom: 8px;
-    padding: 0 8px;
-    box-shadow: 0 3px 10px rgba(38, 52, 64, 0.08);
+    right: 12px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 12px;
+    width: calc(100% - 24px);
+    gap: 4px;
+    padding: 6px;
+    box-shadow: 0 14px 36px rgba(31, 41, 51, 0.22);
   }
 
   .tab-btn {
-    min-width: 0;
-    flex: 1;
-    padding: 0 8px;
-    font-size: 13px;
+    min-height: 54px;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 4px;
+    font-size: 11px;
+  }
+
+  .tab-icon {
+    width: 22px;
+    height: 22px;
+    font-size: 14px;
   }
 
   .workspace,
@@ -929,7 +899,6 @@ td input[data-field="contact"] {
     height: 42px;
   }
 
-  .input-pane,
   .edit-pane,
   .output-pane,
   .tracking-pane {
@@ -939,7 +908,6 @@ td input[data-field="contact"] {
     box-shadow: none;
   }
 
-  .input-pane,
   .output-pane {
     min-height: 0;
   }
@@ -973,19 +941,12 @@ td input[data-field="contact"] {
     font-size: 19px;
   }
 
-  #rawInput {
-    min-height: 210px;
-    padding: 12px;
-  }
-
-  .source-controls,
-  .action-row {
+  .data-controls {
     padding-right: 12px;
     padding-left: 12px;
   }
 
   .pane-head,
-  .action-row,
   .date-range,
   .import-row {
     flex-wrap: wrap;
@@ -999,10 +960,6 @@ td input[data-field="contact"] {
   .ghost-btn,
   .copy-btn {
     flex: 1 1 auto;
-  }
-
-  .action-row .primary-btn {
-    flex-basis: 100%;
   }
 
   .output-pane textarea {

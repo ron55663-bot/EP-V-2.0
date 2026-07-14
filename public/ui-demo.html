@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="ui-demo.css">
 </head>
 <body>
   <main class="app-shell">
@@ -24,18 +25,8 @@
     </header>
 
     <nav class="page-tabs" role="tablist" aria-label="功能頁面">
-      <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-page="messagePage">
-        <span class="tab-icon" aria-hidden="true">⌂</span>
-        <span class="tab-label">首頁</span>
-      </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-page="messagePage">
-        <span class="tab-icon" aria-hidden="true">▦</span>
-        <span class="tab-label">排程編輯與分享</span>
-      </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-page="trackingPage">
-        <span class="tab-icon" aria-hidden="true">↝</span>
-        <span class="tab-label">物流設備路徑追蹤</span>
-      </button>
+      <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-page="messagePage">排程編輯與分享</button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-page="trackingPage">物流設備路徑追蹤</button>
     </nav>
 
     <section id="messagePage" class="page-view active">

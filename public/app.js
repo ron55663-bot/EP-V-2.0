@@ -1,11 +1,15 @@
-const APP_VERSION = "V2.10.11";
+const APP_VERSION = "V3.0.0";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
+const MOCK_COLLAB_STORAGE_KEY = "line-schedule-tool-mock-collaboration-v1";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
+const COLLAB_QUERY_KEY = "schedule";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "新版與傳統格式的聯絡人名稱前方新增空格與@。"
+  "🎨 全新 UI 設計：全面優化介面設計與版面配置，提升手機與桌機瀏覽體驗。",
+  "⚡ 移除手動匯入流程：精簡使用流程，正式以自動匯入資料流程為主。",
+  "🤝 改善行程編輯與分享：優化行程編輯介面，簡化排程分享與接續編輯體驗。"
 ];
 
 const NORTH_PLACES = [
@@ -28,21 +32,6 @@ const CARGO_CODES = [
 
 const OFFICE_DESTINATIONS = new Set(["北辦", "中辦", "南辦", "高辦", "未辨識"]);
 
-const SAMPLE_TEXT = `7/1
-"北辦至高醫岡山送達0800
-儀器_WMC-2"
-"高醫岡山至南辦取回1600
-儀器_WMC-2、A2、P4"
-"中辦至中國送達0730
-聯絡人_Daniel_0958169200
-儀器_CF(34478)"
-7/3
-"南辦至麻新0730到達
-聯絡人_Luke/Harper_0928086129/0971867665
-儀器_WMC-2、A2、P3、CF(36814)"
-"中國醫至北辦15:00取回
-儀器_ICE-TS"`;
-
 let schedules = [];
 let importWarnings = [];
 
@@ -62,8 +51,6 @@ const rangeEndInput = document.getElementById("rangeEnd");
 const sheetImportBtn = document.getElementById("sheetImportBtn");
 const loginBtn = document.getElementById("loginBtn");
 const importStatus = document.getElementById("importStatus");
-const inputPane = document.querySelector(".input-pane");
-const toggleSourceBtn = document.getElementById("toggleSourceBtn");
 const releaseDialog = document.getElementById("releaseDialog");
 const releaseVersion = document.getElementById("releaseVersion");
 const releaseNotesList = document.getElementById("releaseNotesList");
@@ -72,20 +59,15 @@ const releaseCloseBtn = document.getElementById("releaseCloseBtn");
 const messageFormatSelect = document.getElementById("messageFormatSelect");
 const scheduleRegionFilter = document.getElementById("scheduleRegionFilter");
 const shareEditBtn = document.getElementById("shareEditBtn");
-const exportEditBtn = document.getElementById("exportEditBtn");
-const importEditBtn = document.getElementById("importEditBtn");
-const editFileInput = document.getElementById("editFileInput");
 const shareStatus = document.getElementById("shareStatus");
-const shareDialog = document.getElementById("shareDialog");
-const shareDialogCloseBtn = document.getElementById("shareDialogCloseBtn");
-const shareDialogCopyBtn = document.getElementById("shareDialogCopyBtn");
-const shareLinkText = document.getElementById("shareLinkText");
 
 let currentShareUrl = "";
+let currentSharedSchedule = null;
+let collaborationDirty = false;
 
 document.getElementById("appVersion").textContent = APP_VERSION;
 setDefaultDateRange();
-if (!loadSharedStateFromUrl()) restoreAppState();
+if (!loadMockCollaborativeStateFromUrl() && !loadSharedStateFromUrl()) restoreAppState();
 loadServerSharedStateFromUrl();
 showReleaseNotesOnce();
 
@@ -94,31 +76,17 @@ releaseCloseBtn.addEventListener("click", closeReleaseNotes);
 releaseDialog.addEventListener("close", markReleaseSeen);
 messageFormatSelect.addEventListener("change", () => {
   saveAppState();
+  markCollaborationDirty();
   renderOutputs();
 });
 
 scheduleRegionFilter.addEventListener("change", () => {
   saveAppState();
+  markCollaborationDirty();
   renderTable();
 });
 
 shareEditBtn.addEventListener("click", shareCurrentEdit);
-exportEditBtn.addEventListener("click", exportEditFile);
-importEditBtn.addEventListener("click", () => editFileInput.click());
-editFileInput.addEventListener("change", importEditFile);
-shareDialogCloseBtn.addEventListener("click", closeShareDialog);
-shareDialogCopyBtn.addEventListener("click", async () => {
-  const copied = await copyTextToClipboard(shareLinkText.value);
-  setShareStatus(copied ? "已複製分享連結。" : "仍無法自動複製，請手動選取連結。", !copied);
-  if (copied) closeShareDialog();
-});
-shareLinkText.addEventListener("focus", () => shareLinkText.select());
-
-toggleSourceBtn.addEventListener("click", () => {
-  const collapsed = inputPane.classList.toggle("source-collapsed");
-  toggleSourceBtn.setAttribute("aria-expanded", String(!collapsed));
-  toggleSourceBtn.querySelector("span").textContent = collapsed ? "展開" : "收合";
-});
 
 function showReleaseNotesOnce() {
   try {
@@ -172,50 +140,14 @@ document.querySelectorAll(".tab-btn").forEach((button) => {
   });
 });
 
-document.getElementById("parseBtn").addEventListener("click", () => {
-  importWarnings = [];
-  schedules = parseInput(rawInput.value);
-  saveAppState();
-  renderTable();
-  renderOutputs();
-  renderTracker();
-});
-
-document.getElementById("clearBtn").addEventListener("click", () => {
-  if (
-    (rawInput.value || schedules.length) &&
-    !window.confirm("確定要清空目前行程與瀏覽器保存內容？")
-  ) {
-    return;
-  }
-  rawInput.value = "";
-  schedules = [];
-  importWarnings = [];
-  clearSavedState();
-  renderTable();
-  renderOutputs();
-  renderTracker();
-});
-
-document.getElementById("loadSampleBtn").addEventListener("click", () => {
-  rawInput.value = SAMPLE_TEXT;
-  importWarnings = [];
-  schedules = parseInput(rawInput.value);
-  saveAppState();
-  renderTable();
-  renderOutputs();
-  renderTracker();
-});
-
 instrumentSelect.addEventListener("change", () => {
   renderTrackingResult();
 });
 
-rawInput.addEventListener("input", saveAppState);
-
 rangeStartInput.addEventListener("change", () => {
   updateDateRangeLimits();
   saveAppState();
+  markCollaborationDirty();
   renderOutputs();
   renderWeeklyStatistics();
 });
@@ -223,6 +155,7 @@ rangeStartInput.addEventListener("change", () => {
 rangeEndInput.addEventListener("change", () => {
   updateDateRangeLimits();
   saveAppState();
+  markCollaborationDirty();
   renderOutputs();
   renderWeeklyStatistics();
 });
@@ -559,10 +492,11 @@ function classifyDelivery(instruments) {
 }
 
 function renderTable() {
+  const readOnly = isSharedReadOnly();
   scheduleBody.innerHTML = "";
   if (!schedules.length) {
-    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="12">貼上資料後，這裡會顯示可編輯的行程。</td></tr>';
-    summaryText.textContent = "尚未產生行程";
+    scheduleBody.innerHTML = '<tr class="empty-row"><td colspan="12">匯入正式資料後，這裡會顯示可編輯的行程。</td></tr>';
+    summaryText.textContent = "尚未匯入行程";
     return;
   }
 
@@ -598,10 +532,12 @@ function renderTable() {
       warning.textContent = "❗️";
       warning.title = "完成編輯並取消警告";
       warning.setAttribute("aria-label", "完成編輯並取消警告");
+      warning.disabled = readOnly;
       warning.addEventListener("click", () => {
         schedules[index].warningAcknowledged = true;
         schedules[index].parseWarning = false;
         saveAppState();
+        markCollaborationDirty();
         renderTable();
         renderOutputs();
         renderTracker({ keepSelection: true });
@@ -610,6 +546,7 @@ function renderTable() {
     }
     row.querySelectorAll("[data-field]").forEach((field) => {
       field.value = schedule[field.dataset.field] || "";
+      field.disabled = readOnly;
       field.addEventListener("input", () => {
         schedules[index][field.dataset.field] = field.value;
         if (field.dataset.field === "from" || field.dataset.field === "to") {
@@ -620,6 +557,7 @@ function renderTable() {
           phoneField.value = syncContactPhone(schedules[index], field.value);
         }
         saveAppState();
+        markCollaborationDirty();
         renderOutputs();
         renderTracker({ keepSelection: true });
       });
@@ -627,6 +565,7 @@ function renderTable() {
         field.addEventListener("change", () => {
           schedules[index].region = classifyRouteRegion(schedules[index].from, schedules[index].to);
           saveAppState();
+          markCollaborationDirty();
           renderTable();
           renderOutputs();
           renderTracker({ keepSelection: true });
@@ -635,6 +574,7 @@ function renderTable() {
       if (field.dataset.field === "delivery") {
         field.addEventListener("change", () => {
           saveAppState();
+          markCollaborationDirty();
           renderTable();
           renderOutputs();
           renderTracker({ keepSelection: true });
@@ -644,10 +584,12 @@ function renderTable() {
     row.querySelector("[data-remove]").addEventListener("click", () => {
       schedules.splice(index, 1);
       saveAppState();
+      markCollaborationDirty();
       renderTable();
       renderOutputs();
       renderTracker({ keepSelection: true });
     });
+    row.querySelector("[data-remove]").disabled = readOnly;
     scheduleBody.appendChild(row);
   });
 
@@ -877,6 +819,31 @@ function formatSelectedRangeLabel() {
   return `${range.start.getMonth() + 1}/${range.start.getDate()} 至 ${range.end.getMonth() + 1}/${range.end.getDate()}`;
 }
 
+function formatScheduleDateRangeFromSchedules() {
+  const dates = [...new Set(schedules.map((schedule) => String(schedule.date || "").trim()).filter(Boolean))];
+  if (!dates.length) return "日期範圍無效";
+  const sortedDates = dates.sort(compareScheduleDateLabel);
+  const firstDate = sortedDates[0];
+  const lastDate = sortedDates[sortedDates.length - 1];
+  return firstDate === lastDate ? firstDate : `${firstDate} 至 ${lastDate}`;
+}
+
+function compareScheduleDateLabel(a, b) {
+  const resolvedA = resolveScheduleDate(a);
+  const resolvedB = resolveScheduleDate(b);
+  if (resolvedA && resolvedB) return resolvedA - resolvedB;
+  const fallbackA = parseMonthDaySortValue(a);
+  const fallbackB = parseMonthDaySortValue(b);
+  if (fallbackA !== fallbackB) return fallbackA - fallbackB;
+  return compareText(a, b);
+}
+
+function parseMonthDaySortValue(value) {
+  const match = String(value || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  return Number(match[1]) * 100 + Number(match[2]);
+}
+
 function renderOutputs() {
   northOutput.value = buildMessage("north");
   southOutput.value = buildMessage("south");
@@ -919,6 +886,7 @@ async function importFromGoogleSheet() {
     rawInput.value = recordsToRawText(data.records || []);
     schedules = parseInput(rawInput.value);
     saveAppState();
+    markCollaborationDirty();
     renderTable();
     renderOutputs();
     renderTracker();
@@ -1004,39 +972,8 @@ async function shareCurrentEdit() {
     setShareStatus("目前沒有可分享的行程。", true);
     return;
   }
-  if (!window.confirm("分享連結會包含目前行程與電話資料，請只傳給可信任同事。")) return;
-
   saveAppState();
-  const shareUrl = await buildShareUrl();
-  if (!shareUrl) return;
-  const shareText = formatShareText(shareUrl);
-  currentShareUrl = shareUrl;
-  const shareData = {
-    title: "儀器排程編輯",
-    text: SHARE_MESSAGE_PREFIX,
-    url: shareUrl
-  };
-
-  try {
-    if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
-      await navigator.share(shareData);
-      setShareStatus("已開啟分享選單，可選擇 LINE 傳給同事。");
-      return;
-    }
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      setShareStatus("已取消分享。");
-      return;
-    }
-  }
-
-  const copied = await copyTextToClipboard(shareText);
-  if (copied) {
-    setShareStatus("已複製分享連結，同事開啟後可查看並接續編輯。");
-    return;
-  }
-  openShareDialog(shareText);
-  setShareStatus("瀏覽器未允許自動複製，請從視窗複製連結。", true);
+  await shareScheduleDirectly();
 }
 
 function exportEditFile() {
@@ -1044,7 +981,7 @@ function exportEditFile() {
     setShareStatus("目前沒有可匯出的行程。", true);
     return;
   }
-  if (!window.confirm("編輯檔會包含目前行程與電話資料，請只傳給可信任同事。")) return;
+  if (!window.confirm("備份檔會包含目前行程與電話資料，請只傳給可信任同事。")) return;
 
   saveAppState();
   const data = {
@@ -1062,7 +999,7 @@ function exportEditFile() {
   link.click();
   link.remove();
   URL.revokeObjectURL(objectUrl);
-  setShareStatus("已匯出編輯檔，可傳給同事匯入後接續編輯。");
+  setShareStatus("已匯出備份檔，可作為離線備份、還原或轉移使用。");
 }
 
 async function importEditFile(event) {
@@ -1076,12 +1013,13 @@ async function importEditFile(event) {
     const payload = data?.payload || data;
     applySharedState(payload);
     saveAppState();
+    markCollaborationDirty();
     renderTable();
     renderOutputs();
     renderTracker();
-    setShareStatus(`已匯入「${file.name}」，可接續編輯。`);
+    setShareStatus(`已匯入備份「${file.name}」，可接續編輯。`);
   } catch {
-    setShareStatus("編輯檔無法讀取，請確認是本程式匯出的 JSON 檔。", true);
+    setShareStatus("備份檔無法讀取，請確認是本程式匯出的 JSON 檔。", true);
   }
 }
 
@@ -1090,7 +1028,7 @@ function createEditFileName() {
   const today = new Date().toISOString().slice(0, 10);
   const firstDate = dates[0] || today;
   const lastDate = dates[dates.length - 1] || firstDate;
-  return `儀器排程編輯檔_${sanitizeFileName(firstDate)}-${sanitizeFileName(lastDate)}.json`;
+  return `儀器排程備份_${sanitizeFileName(firstDate)}-${sanitizeFileName(lastDate)}.json`;
 }
 
 function sanitizeFileName(value) {
@@ -1098,6 +1036,407 @@ function sanitizeFileName(value) {
     .replace(/[\\/:*?"<>|]/g, "-")
     .replace(/\s+/g, "")
     .slice(0, 30) || "未命名";
+}
+
+function prepareCollaborationPanel() {
+  updateCollaborationPanel();
+}
+
+function createSharedScheduleObject(documentId, version = 1) {
+  const now = new Date().toISOString();
+  return {
+    documentId,
+    title: buildDefaultScheduleTitle(),
+    dateRange: formatScheduleDateRangeFromSchedules(),
+    schemaVersion: 1,
+    appVersion: APP_VERSION,
+    scheduleData: createCompactSharePayload(),
+    shareMode: "edit",
+    version,
+    createdAt: currentSharedSchedule?.createdAt || now,
+    createdBy: currentSharedSchedule?.createdBy || getMockUserName(),
+    updatedAt: now,
+    updatedBy: getMockUserName(),
+    status: "active"
+  };
+}
+
+function ensureCurrentScheduleIsShared() {
+  if (!schedules.length) throw new Error("目前沒有可分享的行程。");
+
+  if (!currentSharedSchedule) {
+    currentSharedSchedule = createSharedScheduleObject(createMockDocumentId(), 1);
+    saveMockSharedSchedule(currentSharedSchedule);
+    currentShareUrl = buildCollaborationUrl(currentSharedSchedule.documentId);
+    collaborationDirty = false;
+    updateUrlForCollaboration(currentSharedSchedule.documentId);
+    updateCollaborationPanel();
+    return currentShareUrl;
+  }
+
+  const stored = getMockSharedSchedule(currentSharedSchedule.documentId);
+  if (!stored || stored.status !== "active") {
+    throw new Error("分享連結已失效，請重新整理後再試。");
+  }
+  if (stored.version !== currentSharedSchedule.version) {
+    throw new Error("排程已被更新，請先重新載入最新內容。");
+  }
+
+  currentSharedSchedule = {
+    ...createSharedScheduleObject(currentSharedSchedule.documentId, stored.version + 1),
+    createdAt: stored.createdAt,
+    createdBy: stored.createdBy
+  };
+  saveMockSharedSchedule(currentSharedSchedule);
+  currentShareUrl = buildCollaborationUrl(currentSharedSchedule.documentId);
+  collaborationDirty = false;
+  updateUrlForCollaboration(currentSharedSchedule.documentId);
+  updateCollaborationPanel();
+  return currentShareUrl;
+}
+
+function createMockCollaboration() {
+  if (!schedules.length) {
+    setShareStatus("目前沒有可建立協作的行程。", true);
+    return;
+  }
+  const documentId = createMockDocumentId();
+  currentSharedSchedule = createSharedScheduleObject(documentId, 1);
+  saveMockSharedSchedule(currentSharedSchedule);
+  currentShareUrl = buildCollaborationUrl(currentSharedSchedule.documentId);
+  collaborationDirty = false;
+  updateUrlForCollaboration(currentSharedSchedule.documentId);
+  updateCollaborationPanel("已儲存");
+  setEditorReadOnly(false);
+  openShareDialog(currentShareUrl);
+  setShareStatus("已建立 Mock 協作連結，可複製到 LINE。");
+}
+
+function saveMockCollaboration() {
+  if (!currentSharedSchedule) {
+    createMockCollaboration();
+    return;
+  }
+  const stored = getMockSharedSchedule(currentSharedSchedule.documentId);
+  if (!stored || stored.status !== "active") {
+    updateCollaborationPanel("協作已停止");
+    setShareStatus("協作已停止，無法儲存。", true);
+    return;
+  }
+  if (stored.version !== currentSharedSchedule.version) {
+    updateCollaborationPanel("發生編輯衝突");
+    setShareStatus("此排程已由其他同事更新，請先載入最新版本。", true);
+    return;
+  }
+  if (stored.shareMode === "view") {
+    updateCollaborationPanel("儲存失敗");
+    setShareStatus("此協作連結為唯讀模式，無法儲存修改。", true);
+    return;
+  }
+
+  updateCollaborationPanel("儲存中");
+  const now = new Date().toISOString();
+  currentSharedSchedule = {
+    ...stored,
+    title: stored.title || buildDefaultScheduleTitle(),
+    shareMode: "edit",
+    dateRange: formatSelectedRangeLabel(),
+    appVersion: APP_VERSION,
+    scheduleData: createCompactSharePayload(),
+    version: stored.version + 1,
+    updatedAt: now,
+    updatedBy: getMockUserName()
+  };
+  saveMockSharedSchedule(currentSharedSchedule);
+  collaborationDirty = false;
+  updateCollaborationPanel("已儲存");
+  setEditorReadOnly(false);
+  setShareStatus(`已儲存 Mock 協作排程，版本 ${currentSharedSchedule.version}。`);
+}
+
+function loadLatestMockCollaboration() {
+  if (!currentSharedSchedule) {
+    const id = new URLSearchParams(location.search).get(COLLAB_QUERY_KEY);
+    if (!id) {
+      setShareStatus("目前沒有協作排程可載入。", true);
+      return false;
+    }
+    return loadMockCollaborativeStateById(id);
+  }
+  return loadMockCollaborativeStateById(currentSharedSchedule.documentId);
+}
+
+function cloneMockCollaboration() {
+  if (!schedules.length) {
+    setShareStatus("目前沒有可另存副本的行程。", true);
+    return;
+  }
+  const previousTitle = currentSharedSchedule?.title || buildDefaultScheduleTitle();
+  currentSharedSchedule = null;
+  currentShareUrl = "";
+  createMockCollaboration();
+  setShareStatus("已另存為新的 Mock 協作排程。");
+}
+
+function simulateMockConflict() {
+  if (!currentSharedSchedule) {
+    setShareStatus("請先建立或載入協作排程。", true);
+    return;
+  }
+  const stored = getMockSharedSchedule(currentSharedSchedule.documentId);
+  if (!stored || stored.status !== "active") {
+    setShareStatus("此協作已停止，無法模擬衝突。", true);
+    return;
+  }
+  const conflicted = {
+    ...stored,
+    version: stored.version + 1,
+    updatedAt: new Date().toISOString(),
+    updatedBy: "Mock 同事"
+  };
+  saveMockSharedSchedule(conflicted);
+  updateCollaborationPanel("有新版本");
+  setShareStatus("已模擬其他同事儲存新版。現在按儲存會出現版本衝突。", true);
+}
+
+function disableMockCollaboration() {
+  if (!currentSharedSchedule) {
+    setShareStatus("目前沒有協作可停止。", true);
+    return;
+  }
+  if (!window.confirm("停止協作後，此連結將無法再載入或更新。確定停止？")) return;
+  const stored = getMockSharedSchedule(currentSharedSchedule.documentId);
+  if (!stored) return;
+  const disabled = {
+    ...stored,
+    status: "disabled",
+    updatedAt: new Date().toISOString(),
+    updatedBy: getMockUserName()
+  };
+  saveMockSharedSchedule(disabled);
+  currentSharedSchedule = disabled;
+  collaborationDirty = false;
+  updateCollaborationPanel("協作已停止");
+  setShareStatus("Mock 協作已停止。", true);
+}
+
+async function shareMockCollaborationToLine() {
+  await shareScheduleDirectly();
+}
+
+async function shareScheduleDirectly() {
+  if (!schedules.length) {
+    setShareStatus("目前沒有可分享的行程。", true);
+    return;
+  }
+  setShareButtonState("正在建立分享連結…", true);
+  setShareStatus("正在建立分享連結…");
+  let shareUrl = "";
+  try {
+    setShareButtonState("正在儲存最新版…", true);
+    setShareStatus("正在儲存最新版…");
+    shareUrl = await createShareUrlForCurrentSchedule();
+  } catch (error) {
+    setShareButtonState("分享排程");
+    setShareStatus(error?.message || "分享失敗，請重試。", true);
+    return;
+  }
+
+  setShareButtonState("正在開啟分享…", true);
+  setShareStatus("正在開啟分享…");
+  const text = formatCollaborationShareText(shareUrl);
+  const shareData = {
+    title: "EP 排程",
+    text
+  };
+  try {
+    if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+      await navigator.share(shareData);
+      setShareStatus("已開啟系統分享。");
+      setShareButtonState("分享排程");
+      return;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      setShareStatus("已取消分享。");
+      setShareButtonState("分享排程");
+      return;
+    }
+  }
+
+  const copied = await copyTextToClipboard(text);
+  setShareStatus(copied ? "分享內容已複製。" : "分享失敗，請重試。", !copied);
+  setShareButtonState("分享排程");
+}
+
+async function createShareUrlForCurrentSchedule() {
+  if (!schedules.length) throw new Error("目前沒有可分享的行程。");
+  saveAppState();
+  if (location.protocol !== "file:" && location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
+    currentShareUrl = await createShortShareUrl(createCompactSharePayload());
+    return currentShareUrl;
+  }
+  return ensureCurrentScheduleIsShared();
+}
+
+async function copyCurrentShareLink() {
+  if (!schedules.length) {
+    setShareStatus("目前沒有可複製的分享連結。", true);
+    return;
+  }
+  try {
+    setShareStatus("正在建立分享連結…");
+    const shareUrl = await createShareUrlForCurrentSchedule();
+    const copied = await copyTextToClipboard(shareUrl);
+    setShareStatus(copied ? "分享連結已複製。" : "無法自動複製，請再試一次。", !copied);
+  } catch (error) {
+    setShareStatus(error?.message || "分享失敗，請重試。", true);
+  }
+}
+
+function loadMockCollaborativeStateFromUrl() {
+  const id = new URLSearchParams(location.search).get(COLLAB_QUERY_KEY);
+  if (!id) return false;
+  return loadMockCollaborativeStateById(id);
+}
+
+function loadMockCollaborativeStateById(documentId) {
+  const shared = getMockSharedSchedule(documentId);
+  if (!shared) {
+    setShareStatus("找不到此 Mock 協作排程，請確認連結是否正確。", true);
+    return false;
+  }
+  currentSharedSchedule = shared;
+  currentShareUrl = buildCollaborationUrl(shared.documentId);
+  if (shared.status !== "active") {
+    updateCollaborationPanel("協作已停止");
+    setShareStatus("此 Mock 協作排程已停止。", true);
+    setEditorReadOnly(true);
+    return true;
+  }
+  applySharedState(shared.scheduleData);
+  saveAppState();
+  collaborationDirty = false;
+  renderTable();
+  renderOutputs();
+  renderTracker();
+  updateCollaborationPanel("已儲存");
+  setEditorReadOnly(shared.shareMode === "view");
+  setShareStatus(shared.shareMode === "view" ? "已載入唯讀 Mock 協作排程。" : "已載入可編輯 Mock 協作排程。");
+  return true;
+}
+
+function getMockCollaborationStore() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MOCK_COLLAB_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function setMockCollaborationStore(store) {
+  localStorage.setItem(MOCK_COLLAB_STORAGE_KEY, JSON.stringify(store));
+}
+
+function getMockSharedSchedule(documentId) {
+  const store = getMockCollaborationStore();
+  return store[documentId] || null;
+}
+
+function saveMockSharedSchedule(shared) {
+  const store = getMockCollaborationStore();
+  store[shared.documentId] = shared;
+  setMockCollaborationStore(store);
+}
+
+function createMockDocumentId() {
+  if (crypto?.randomUUID) return crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function buildCollaborationUrl(documentId) {
+  const url = new URL(location.href);
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set(COLLAB_QUERY_KEY, documentId);
+  return url.toString();
+}
+
+function updateUrlForCollaboration(documentId) {
+  if (!history.replaceState) return;
+  const url = new URL(location.href);
+  url.searchParams.set(COLLAB_QUERY_KEY, documentId);
+  history.replaceState(null, "", url.toString());
+}
+
+function buildDefaultScheduleTitle() {
+  const rangeLabel = formatScheduleDateRangeFromSchedules();
+  return rangeLabel === "日期範圍無效" ? "EP 排程" : `EP 排程｜${rangeLabel}`;
+}
+
+function formatCollaborationShareText(shareUrl = "") {
+  const url = shareUrl || currentShareUrl || (currentSharedSchedule ? buildCollaborationUrl(currentSharedSchedule.documentId) : "");
+  const rangeLabel = formatScheduleDateRangeFromSchedules();
+  return [
+    "【EP 排程】",
+    "",
+    `📅 ${rangeLabel}`,
+    "",
+    "👇 點我查看目前最新排程，並可繼續編輯。",
+    "",
+    url
+  ].join("\n");
+}
+
+function updateCollaborationPanel(saveState = "") {
+  const shared = currentSharedSchedule;
+  currentShareUrl = shared ? buildCollaborationUrl(shared.documentId) : currentShareUrl;
+}
+
+function markCollaborationDirty() {
+  if (!currentSharedSchedule || currentSharedSchedule.status !== "active") return;
+  collaborationDirty = true;
+  updateCollaborationPanel("尚未儲存");
+}
+
+function isSharedReadOnly() {
+  return Boolean(currentSharedSchedule && (
+    currentSharedSchedule.status !== "active" ||
+    currentSharedSchedule.shareMode === "view"
+  ));
+}
+
+function setShareButtonState(label, disabled = false) {
+  shareEditBtn.textContent = label;
+  shareEditBtn.disabled = disabled;
+}
+
+function setEditorReadOnly(readOnly) {
+  rawInput.disabled = readOnly;
+  sheetImportBtn.disabled = readOnly;
+  renderTable();
+}
+
+function getMockUserName() {
+  try {
+    const user = window.netlifyIdentity?.currentUser?.();
+    return user?.email || user?.user_metadata?.full_name || "Mock 使用者";
+  } catch {
+    return "Mock 使用者";
+  }
+}
+
+function formatDisplayDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 async function buildShareUrl() {
@@ -1311,20 +1650,21 @@ function fallbackCopyText(text) {
   return copied;
 }
 
-function openShareDialog(url) {
-  shareLinkText.value = url;
+function openShareDialog(url = "") {
+  const shareDialog = document.getElementById("shareDialog");
+  if (!shareDialog) return;
+  const shareLinkText = document.getElementById("shareLinkText");
+  if (shareLinkText) shareLinkText.value = url;
   if (typeof shareDialog.showModal === "function") {
     shareDialog.showModal();
   } else {
     shareDialog.setAttribute("open", "");
   }
-  requestAnimationFrame(() => {
-    shareLinkText.focus();
-    shareLinkText.select();
-  });
 }
 
 function closeShareDialog() {
+  const shareDialog = document.getElementById("shareDialog");
+  if (!shareDialog) return;
   if (typeof shareDialog.close === "function") {
     shareDialog.close();
     return;
