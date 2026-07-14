@@ -12,6 +12,17 @@ export async function handler(event) {
 }
 
 async function createShare(event) {
+  if (!isBlobConfigured()) {
+    console.error("Share save failed: Netlify Blobs environment is not configured.", {
+      hasSiteID: Boolean(process.env.NETLIFY_SITE_ID || process.env.SITE_ID),
+      hasToken: Boolean(process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN)
+    });
+    return jsonResponse(503, {
+      code: "SHARE_STORAGE_NOT_CONFIGURED",
+      error: "分享功能尚未啟用，請稍後再試。"
+    });
+  }
+
   const body = String(event.body || "");
   if (!body || body.length > MAX_BODY_LENGTH) {
     return jsonResponse(400, { error: "分享資料過大或格式不正確。" });
@@ -38,7 +49,8 @@ async function createShare(event) {
   } catch (error) {
     console.error("Share save failed:", error?.message || error);
     return jsonResponse(500, {
-      error: `短網址儲存失敗：${sanitizeErrorMessage(error)}`
+      code: "SHARE_STORAGE_ERROR",
+      error: "分享功能尚未啟用，請稍後再試。"
     });
   }
 
@@ -46,6 +58,17 @@ async function createShare(event) {
 }
 
 async function readShare(event) {
+  if (!isBlobConfigured()) {
+    console.error("Share read failed: Netlify Blobs environment is not configured.", {
+      hasSiteID: Boolean(process.env.NETLIFY_SITE_ID || process.env.SITE_ID),
+      hasToken: Boolean(process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN)
+    });
+    return jsonResponse(503, {
+      code: "SHARE_STORAGE_NOT_CONFIGURED",
+      error: "分享功能尚未啟用，請稍後再試。"
+    });
+  }
+
   const id = String(event.queryStringParameters?.id || "").trim();
   if (!ID_PATTERN.test(id)) {
     return jsonResponse(400, { error: "分享代碼格式不正確。" });
@@ -58,7 +81,8 @@ async function readShare(event) {
   } catch (error) {
     console.error("Share read failed:", error?.message || error);
     return jsonResponse(500, {
-      error: `分享資料讀取失敗：${sanitizeErrorMessage(error)}`
+      code: "SHARE_STORAGE_ERROR",
+      error: "分享功能尚未啟用，請稍後再試。"
     });
   }
   if (!raw) return jsonResponse(404, { error: "找不到此分享行程。" });
@@ -78,21 +102,14 @@ function createShareId() {
 function getShareStore() {
   const siteID = process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
   const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
-  if (siteID && token) {
-    return getStore({ name: STORE_NAME, siteID, token });
-  }
-  return getStore(STORE_NAME);
+  return getStore({ name: STORE_NAME, siteID, token });
 }
 
-function sanitizeErrorMessage(error) {
-  const message = String(error?.message || error || "Netlify Blobs / Functions 發生未知錯誤");
-  if (/siteID,\s*token/i.test(message)) {
-    return "Netlify Blobs 需要環境變數 NETLIFY_SITE_ID 與 NETLIFY_BLOBS_TOKEN。";
-  }
-  return message
-    .replace(/https?:\/\/\S+/g, "[url]")
-    .replace(/[A-Za-z0-9_-]{32,}/g, "[hidden]")
-    .slice(0, 180);
+function isBlobConfigured() {
+  return Boolean(
+    (process.env.NETLIFY_SITE_ID || process.env.SITE_ID) &&
+    (process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN)
+  );
 }
 
 function jsonResponse(statusCode, data) {

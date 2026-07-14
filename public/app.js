@@ -6,6 +6,7 @@ const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const COLLAB_QUERY_KEY = "schedule";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
+const PRODUCTION_HOSTNAME = "dazzling-croquembouche-edae63.netlify.app";
 const RELEASE_NOTES = [
   "🎨 全新 UI 設計：全面優化介面設計與版面配置，提升手機與桌機瀏覽體驗。",
   "⚡ 移除手動匯入流程：精簡使用流程，正式以自動匯入資料流程為主。",
@@ -1272,9 +1273,18 @@ async function shareScheduleDirectly() {
 async function createShareUrlForCurrentSchedule() {
   if (!schedules.length) throw new Error("目前沒有可分享的行程。");
   saveAppState();
-  if (location.protocol !== "file:" && location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
-    currentShareUrl = await createShortShareUrl(createCompactSharePayload());
-    return currentShareUrl;
+  if (isProduction() && isBlobAvailable()) {
+    try {
+      currentShareUrl = await createShortShareUrl(createCompactSharePayload());
+      return currentShareUrl;
+    } catch (error) {
+      console.error("Production share storage failed. Falling back to local mock sharing.", error);
+      if (isShareStorageUnavailable(error)) {
+        setShareStatus("分享功能尚未啟用，請稍後再試。");
+      }
+    }
+  } else {
+    console.info("Sharing uses local mock storage outside production or when Blob storage is unavailable.");
   }
   return ensureCurrentScheduleIsShared();
 }
@@ -1441,18 +1451,18 @@ function formatDisplayDateTime(value) {
 
 async function buildShareUrl() {
   const payload = createCompactSharePayload();
-  if (location.hostname === "127.0.0.1" || location.hostname === "localhost" || location.protocol === "file:") {
-    setShareStatus("短網址需在 Netlify 正式網址使用，本機預覽不會產生分享連結。", true);
-    return "";
+  if (isProduction() && isBlobAvailable()) {
+    try {
+      const shortUrl = await createShortShareUrl(payload);
+      if (shortUrl) return shortUrl;
+    } catch (error) {
+      console.error("Production share storage failed. Falling back to local mock sharing.", error);
+      if (isShareStorageUnavailable(error)) {
+        setShareStatus("分享功能尚未啟用，請稍後再試。");
+      }
+    }
   }
-
-  try {
-    const shortUrl = await createShortShareUrl(payload);
-    if (shortUrl) return shortUrl;
-  } catch (error) {
-    setShareStatus(error?.message || "短網址建立失敗，請確認 Netlify 已部署最新版本。", true);
-  }
-  return "";
+  return ensureCurrentScheduleIsShared();
 }
 
 async function createShortShareUrl(payload) {
@@ -1469,11 +1479,41 @@ async function createShortShareUrl(payload) {
     data = {};
   }
   if (!response.ok || !data.id) {
-    throw new Error(data.error || `短網址建立失敗：Netlify 回應 ${response.status}`);
+    const error = new Error(getSafeShareErrorMessage(data, response.status));
+    error.status = response.status;
+    error.code = data.code || "";
+    error.detail = data;
+    throw error;
   }
   const url = new URL(`${location.origin}${location.pathname}`);
   url.searchParams.set(SHARE_QUERY_KEY, data.id);
   return url.toString();
+}
+
+function isProduction() {
+  return location.protocol === "https:" && location.hostname === PRODUCTION_HOSTNAME;
+}
+
+function isBlobAvailable() {
+  return isProduction();
+}
+
+function isShareStorageUnavailable(error) {
+  return error?.code === "SHARE_STORAGE_NOT_CONFIGURED" || error?.status === 503;
+}
+
+function getSafeShareErrorMessage(data, status) {
+  if (data?.code === "SHARE_STORAGE_NOT_CONFIGURED" || status === 503) {
+    return "分享功能尚未啟用，請稍後再試。";
+  }
+  if (containsInternalShareError(data?.error)) {
+    return "分享功能尚未啟用，請稍後再試。";
+  }
+  return data?.error || `分享功能暫時無法使用，請稍後再試。`;
+}
+
+function containsInternalShareError(message) {
+  return /NETLIFY_SITE_ID|NETLIFY_BLOBS_TOKEN|NETLIFY_AUTH_TOKEN|SITE_ID|Stack Trace|Internal Error|siteID,\s*token/i.test(String(message || ""));
 }
 
 async function loadServerSharedStateFromUrl() {
