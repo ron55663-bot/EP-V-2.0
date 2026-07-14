@@ -1,11 +1,11 @@
-const APP_VERSION = "V2.10.10";
+const APP_VERSION = "V2.10.11";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const SHARE_HASH_PREFIX = "#share=";
 const SHARE_QUERY_KEY = "share";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const RELEASE_NOTES = [
-  "中南區醫院新增中國醫B棟。"
+  "新版與傳統格式的聯絡人名稱前方新增空格與@。"
 ];
 
 const NORTH_PLACES = [
@@ -1736,7 +1736,7 @@ function formatTraditionalSchedule(item) {
   const suffix = formatTraditionalTimeAction(item);
   const warning = scheduleNeedsReview(item) ? "❗️ " : "";
   const contact = item.contact || "業務";
-  const contactLine = `聯絡人_${contact}${item.phone ? `_${item.phone}` : ""}`;
+  const contactLine = `聯絡人_ @${contact}${item.phone ? `_${item.phone}` : ""}`;
   const route = item.delivery === "ship"
     ? `${item.from} 寄送 ${item.to}`
     : item.action === "取回"
@@ -1761,7 +1761,7 @@ function formatModernSchedule(item) {
     : `${item.from} 至 ${item.to}${suffix}`;
   const lines = [
     `${warning}📍 ${route}`,
-    `👤 聯絡人：${item.contact || "業務"}`
+    `👤 聯絡人： @${item.contact || "業務"}`
   ];
   if (item.phone) lines.push(`📞 電話：${item.phone}`);
   lines.push(`📦 儀器：${item.instruments || "未填"}`);
