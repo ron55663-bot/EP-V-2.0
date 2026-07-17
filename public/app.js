@@ -1,4 +1,4 @@
-const APP_VERSION = "V3.0.0";
+const APP_VERSION = "V3.0.1";
 const APP_STORAGE_KEY = "line-schedule-tool-state-v1";
 const RELEASE_STORAGE_KEY = "line-schedule-tool-seen-release";
 const MOCK_COLLAB_STORAGE_KEY = "line-schedule-tool-mock-collaboration-v1";
@@ -8,9 +8,9 @@ const COLLAB_QUERY_KEY = "schedule";
 const SHARE_MESSAGE_PREFIX = "點我繼續編輯行程";
 const PRODUCTION_HOSTNAME = "dazzling-croquembouche-edae63.netlify.app";
 const RELEASE_NOTES = [
-  "🎨 全新 UI 設計：全面優化介面設計與版面配置，提升手機與桌機瀏覽體驗。",
-  "⚡ 移除手動匯入流程：精簡使用流程，正式以自動匯入資料流程為主。",
-  "🤝 改善行程編輯與分享：優化行程編輯介面，簡化排程分享與接續編輯體驗。"
+  "🏥 新增中南區醫院「亞大」辨識。",
+  "💬 調整跨區提醒文字為「跨區提醒 麻煩 @協助安排」。",
+  "🔒 優化分享錯誤提示，避免顯示開發資訊。"
 ];
 
 const NORTH_PLACES = [
@@ -20,7 +20,7 @@ const NORTH_PLACES = [
 ];
 
 const SOUTH_PLACES = [
-  "中榮", "中榮秀傳", "濱秀", "中國", "中國醫", "中國醫B棟", "中國兒科", "彰基", "中山", "大里仁愛",
+  "中榮", "中榮秀傳", "濱秀", "中國", "中國醫", "中國醫B棟", "中國兒科", "彰基", "中山", "亞大", "大里仁愛",
   "麻新", "嘉長", "嘉榮", "嘉基", "高榮", "高醫", "高醫岡山", "南辦", "中辦", "高辦",
   "雲大", "雲林台大", "斗六成大", "成大", "高長", "長安", "屏基", "屏榮", "大林慈濟",
   "中慈", "奇美", "高雄全統", "嘉義全統", "802", "802醫院"
