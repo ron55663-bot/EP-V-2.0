@@ -2038,7 +2038,7 @@ function buildMessage(region) {
   }
 
   if (cross.length) {
-    lines.push("", "跨區提醒");
+    lines.push("", "跨區提醒 麻煩 @協助安排");
     appendGrouped(lines, cross);
   }
 
